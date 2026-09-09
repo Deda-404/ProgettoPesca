@@ -3,7 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Fish, ImagePlus, LocateFixed, MapPin, Plus, Trash2, X } from 'lucide-react'
 import SpotPhoto from './SpotPhoto'
-import { compressSpotPhoto, formatPhotoBytes } from '../lib/spotPhotos'
+import { compressSpotPhoto, deleteLocalSpotPhoto, formatPhotoBytes, saveLocalSpotPhoto } from '../lib/spotPhotos'
 import './SpotMapView.css'
 
 const SPOT_TYPES = [
@@ -202,21 +202,47 @@ export default function SpotMapView({
     event.preventDefault()
     if (!draftPoint || !form.name.trim() || saving || compressingPhoto) return
 
-    const success = await onSaveSpot({
-      id: crypto.randomUUID(),
-      ...draftPoint,
-      name: form.name.trim(),
-      type: form.type,
-      notes: form.notes.trim(),
-      isPrivate: form.isPrivate,
-      photoBlob,
-    })
+    const spotId = crypto.randomUUID()
+    let localPhotoKey = ''
 
-    if (success !== false) {
+    try {
+      if (!cloudEnabled && photoBlob) localPhotoKey = await saveLocalSpotPhoto(spotId, photoBlob)
+
+      const payload = {
+        id: spotId,
+        ...draftPoint,
+        name: form.name.trim(),
+        type: form.type,
+        notes: form.notes.trim(),
+        isPrivate: form.isPrivate,
+        photoLocalKey: localPhotoKey,
+        photoPath: '',
+        photoUrl: '',
+        ...(cloudEnabled ? { photoBlob } : {}),
+      }
+
+      const success = await onSaveSpot(payload)
+      if (success === false) {
+        if (localPhotoKey) await deleteLocalSpotPhoto(localPhotoKey)
+        return
+      }
+
       setForm({ name: '', type: 'spiaggia', notes: '', isPrivate: true })
       setDraftPoint(null)
       clearPhoto()
+    } catch (error) {
+      if (localPhotoKey) {
+        try { await deleteLocalSpotPhoto(localPhotoKey) } catch { /* pulizia best-effort */ }
+      }
+      setPhotoStatus(error?.message || 'Non riesco a salvare la foto dello spot.')
     }
+  }
+
+  async function deleteSpot(spot) {
+    if (!cloudEnabled && spot.photoLocalKey) {
+      try { await deleteLocalSpotPhoto(spot.photoLocalKey) } catch { /* il record resta comunque eliminabile */ }
+    }
+    await onDeleteSpot(spot)
   }
 
   return (
@@ -301,7 +327,7 @@ export default function SpotMapView({
                   <span>{spot.type} · {formatCoordinate(spot.latitude)}, {formatCoordinate(spot.longitude)}</span>
                   {spot.notes && <small>{spot.notes}</small>}
                 </div>
-                <button type="button" className="spot-delete" onClick={() => onDeleteSpot(spot)} aria-label={`Elimina ${spot.name}`}><Trash2 size={17} /></button>
+                <button type="button" className="spot-delete" onClick={() => deleteSpot(spot)} aria-label={`Elimina ${spot.name}`}><Trash2 size={17} /></button>
               </article>
             ))}
           </div>
