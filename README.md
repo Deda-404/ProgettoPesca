@@ -21,7 +21,7 @@ Principi architetturali:
 - Leaflet caricato in lazy loading soltanto all'apertura della mappa
 - inventario attrezzatura caricato dinamicamente soltanto quando viene aperto
 - foto compresse direttamente nel browser prima dell'upload
-- bucket foto privato, limite server-side di 512 KB per file
+- bucket foto privati, limite server-side di 512 KB per file
 - query e trasferimenti dati mantenuti piccoli e paginati quando necessario
 - cache PWA e cache applicativa per ridurre richieste e banda
 
@@ -65,7 +65,7 @@ L'indice 0–100 combina vento, raffiche, onda, precipitazioni, stabilità della
 La mappa usa OpenStreetMap/Leaflet e supporta:
 
 - GPS e centro mappa sulla località attiva
-- spot privati con nome, tipo, note e coordinate
+- spot privati con nome, tipo, note, coordinate e foto opzionale
 - salvataggio cloud per utenti autenticati e locale per ospiti
 - marker separati per spot e catture
 - associazione della cattura a uno spot già salvato
@@ -100,7 +100,21 @@ Le foto sono progettate specificamente per il piano gratuito Supabase:
 - modalità ospite: Blob conservato in IndexedDB, senza riempire `localStorage`
 - nessuna Image Transformation o funzione server a pagamento
 
-Questa scelta riduce sia occupazione Storage sia egress e mantiene le foto non pubbliche.
+## Foto degli spot
+
+Gli spot usano la stessa pipeline di ottimizzazione delle catture:
+
+- una foto facoltativa per spot
+- compressione sul dispositivo con lo stesso limite massimo di 512 KB
+- bucket privato Supabase `spot-photos`
+- percorsi isolati per utente: `<user-id>/<spot-id>.<ext>`
+- URL firmate temporanee e caricamento lazy
+- RLS su lettura, upload ed eliminazione
+- eliminazione della foto insieme allo spot
+- modalità ospite con Blob in IndexedDB separato da `localStorage`
+- nessuna dipendenza, Edge Function o servizio a pagamento aggiuntivo
+
+Questa scelta mantiene private le immagini e riduce Storage ed egress sui piani Free.
 
 ## Avvio locale
 
@@ -127,9 +141,9 @@ Lo schema applicativo comprende:
 - `gear`
 - `catch_gear`
 
-Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Le catture possono memorizzare coordinate, località, spot, attrezzatura e il percorso privato della foto.
+Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Catture e spot possono memorizzare anche il percorso privato della rispettiva foto.
 
-Lo Storage usa il bucket privato `catch-photos` con policy che limitano ogni utente alla propria cartella. Gli indici duplicati non necessari sono stati rimossi; restano quelli utili alle query reali e alle future statistiche.
+Lo Storage usa i bucket privati `catch-photos` e `spot-photos`, con policy che limitano ogni utente alla propria cartella. Gli indici duplicati non necessari sono stati rimossi; restano quelli utili alle query reali e alle future statistiche.
 
 ## Autenticazione
 
@@ -159,5 +173,5 @@ Il file `render.yaml` è predisposto per una Static Site XFish. Variabili richie
 6. gestione attrezzatura completa ✅
 7. associazione attrezzatura alle catture ✅
 8. foto private delle catture con compressione client-side ✅
-9. foto degli spot con la stessa pipeline ottimizzata
+9. foto degli spot con la stessa pipeline ottimizzata ✅
 10. statistiche personali per specie, spot e attrezzatura
