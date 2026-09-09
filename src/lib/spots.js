@@ -1,6 +1,7 @@
+import { removeSpotPhoto, signSpotPhotoPaths, uploadSpotPhoto } from './spotPhotos'
 import { supabase } from './supabase'
 
-function mapSpot(row) {
+function mapSpot(row, signedUrls = new Map()) {
   return {
     id: row.id,
     name: row.name,
@@ -9,55 +10,98 @@ function mapSpot(row) {
     type: row.spot_type || 'altro',
     notes: row.notes || '',
     isPrivate: row.is_private !== false,
+    photoPath: row.photo_path || '',
+    photoUrl: row.photo_path ? (signedUrls.get(row.photo_path) || '') : '',
+    photoLocalKey: '',
     createdAt: row.created_at,
     synced: true,
   }
 }
+
+const spotSelect = 'id,name,latitude,longitude,spot_type,notes,is_private,photo_path,created_at'
 
 export async function loadRemoteSpots(userId) {
   if (!supabase || !userId) return []
 
   const { data, error } = await supabase
     .from('fishing_spots')
-    .select('id,name,latitude,longitude,spot_type,notes,is_private,created_at')
+    .select(spotSelect)
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .limit(250)
 
   if (error) throw error
-  return (data || []).map(mapSpot)
+
+  const rows = data || []
+  let signedUrls = new Map()
+  try {
+    signedUrls = await signSpotPhotoPaths(rows.map((row) => row.photo_path))
+  } catch {
+    // Gli spot restano utilizzabili anche se la firma delle immagini non riesce.
+  }
+  return rows.map((row) => mapSpot(row, signedUrls))
 }
 
 export async function createRemoteSpot(userId, spot) {
   if (!supabase || !userId) throw new Error('Cloud XFish non disponibile.')
 
-  const payload = {
-    user_id: userId,
-    name: spot.name.trim(),
-    latitude: Number(spot.latitude),
-    longitude: Number(spot.longitude),
-    spot_type: spot.type || 'altro',
-    notes: spot.notes?.trim() || null,
-    is_private: spot.isPrivate !== false,
+  const spotId = spot.id || crypto.randomUUID()
+  let photoPath = ''
+
+  try {
+    if (spot.photoBlob) photoPath = await uploadSpotPhoto(userId, spotId, spot.photoBlob)
+
+    const payload = {
+      id: spotId,
+      user_id: userId,
+      name: spot.name.trim(),
+      latitude: Number(spot.latitude),
+      longitude: Number(spot.longitude),
+      spot_type: spot.type || 'altro',
+      notes: spot.notes?.trim() || null,
+      is_private: spot.isPrivate !== false,
+      photo_path: photoPath || null,
+    }
+
+    const { data, error } = await supabase
+      .from('fishing_spots')
+      .insert(payload)
+      .select(spotSelect)
+      .single()
+
+    if (error) throw error
+
+    let signedUrls = new Map()
+    if (photoPath) {
+      try {
+        signedUrls = await signSpotPhotoPaths([photoPath])
+      } catch {
+        // Il record è salvo; la foto verrà firmata al prossimo caricamento.
+      }
+    }
+    return mapSpot(data, signedUrls)
+  } catch (error) {
+    if (photoPath) {
+      try { await removeSpotPhoto(photoPath) } catch { /* pulizia best-effort */ }
+    }
+    throw error
   }
-
-  const { data, error } = await supabase
-    .from('fishing_spots')
-    .insert(payload)
-    .select('id,name,latitude,longitude,spot_type,notes,is_private,created_at')
-    .single()
-
-  if (error) throw error
-  return mapSpot(data)
 }
 
-export async function deleteRemoteSpot(userId, spotId) {
+export async function deleteRemoteSpot(userId, spot) {
   if (!supabase || !userId) throw new Error('Cloud XFish non disponibile.')
 
   const { error } = await supabase
     .from('fishing_spots')
     .delete()
-    .eq('id', spotId)
+    .eq('id', spot.id)
     .eq('user_id', userId)
 
   if (error) throw error
+
+  let photoCleanupFailed = false
+  if (spot.photoPath) {
+    try { await removeSpotPhoto(spot.photoPath) } catch { photoCleanupFailed = true }
+  }
+  return { photoCleanupFailed }
 }
