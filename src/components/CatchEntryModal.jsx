@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Crosshair, MapPin, Navigation, X } from 'lucide-react'
+import { Crosshair, MapPin, Navigation, PackageCheck, X } from 'lucide-react'
 import './CatchEntryModal.css'
 
 function localDateTimeValue(date = new Date()) {
@@ -11,11 +11,17 @@ function formatCoordinate(value) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(5) : '—'
 }
 
+function gearLabel(item) {
+  const title = [item.brand, item.model].filter(Boolean).join(' ') || item.category
+  return { title, detail: item.category + (item.specs ? ` · ${item.specs}` : '') }
+}
+
 export default function CatchEntryModal({
   onClose,
   onSave,
   saving,
   spots,
+  gear = [],
   activeLocation,
   activeLocationLabel,
 }) {
@@ -28,6 +34,8 @@ export default function CatchEntryModal({
     notes: '',
     spotId: '',
   })
+  const [gearIds, setGearIds] = useState([])
+  const [gearSearch, setGearSearch] = useState('')
   const [coordinates, setCoordinates] = useState(null)
   const [locationLabel, setLocationLabel] = useState('')
   const [locating, setLocating] = useState(false)
@@ -38,7 +46,28 @@ export default function CatchEntryModal({
     [form.spotId, spots],
   )
 
+  const visibleGear = useMemo(() => {
+    const query = gearSearch.trim().toLowerCase()
+    const selected = gear.filter((item) => gearIds.includes(item.id))
+    const matches = gear.filter((item) => {
+      if (gearIds.includes(item.id)) return false
+      if (!query) return true
+      return [item.category, item.brand, item.model, item.specs]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    })
+    return [...selected, ...matches].slice(0, 40)
+  }, [gear, gearIds, gearSearch])
+
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
+
+  function toggleGear(gearId) {
+    setGearIds((current) => current.includes(gearId)
+      ? current.filter((id) => id !== gearId)
+      : [...current, gearId])
+  }
 
   function selectSpot(event) {
     const spotId = event.target.value
@@ -107,6 +136,7 @@ export default function CatchEntryModal({
       id: crypto.randomUUID(),
       species: form.species.trim(),
       spotId: form.spotId || null,
+      gearIds,
       latitude: coordinates?.latitude ?? null,
       longitude: coordinates?.longitude ?? null,
       locationLabel: locationLabel || null,
@@ -129,6 +159,48 @@ export default function CatchEntryModal({
             <label>Peso (kg)<input inputMode="decimal" value={form.weight} onChange={update('weight')} /></label>
             <label>Lunghezza (cm)<input inputMode="decimal" value={form.length} onChange={update('length')} /></label>
           </div>
+
+          <section className="catch-gear-panel">
+            <div className="catch-location-title">
+              <PackageCheck size={18} />
+              <div><strong>Attrezzatura utilizzata</strong><span>Facoltativa · puoi selezionare più elementi dell’inventario</span></div>
+            </div>
+
+            {gear.length === 0 ? (
+              <small className="catch-location-status">L’inventario è vuoto. Puoi aggiungere canna, mulinello, filo e artificiali dalla sezione Attrezzatura.</small>
+            ) : (
+              <>
+                <input
+                  className="catch-gear-search"
+                  value={gearSearch}
+                  onChange={(event) => setGearSearch(event.target.value)}
+                  placeholder="Cerca marca, modello o categoria…"
+                />
+                <div className="catch-gear-grid">
+                  {visibleGear.map((item) => {
+                    const label = gearLabel(item)
+                    const selected = gearIds.includes(item.id)
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`catch-gear-option${selected ? ' selected' : ''}`}
+                        onClick={() => toggleGear(item.id)}
+                        aria-pressed={selected}
+                      >
+                        <strong>{label.title}</strong>
+                        <span>{label.detail}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <small className="catch-location-status">
+                  {gearIds.length ? `${gearIds.length} elementi selezionati.` : 'Nessun elemento selezionato.'}
+                  {gear.length > 40 && !gearSearch && ' Usa la ricerca per vedere rapidamente il resto dell’inventario.'}
+                </small>
+              </>
+            )}
+          </section>
 
           <section className="catch-location-panel">
             <div className="catch-location-title">

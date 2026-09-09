@@ -32,8 +32,13 @@ const navItems = [
   { id: 'gear', label: 'Attrezzatura', icon: Backpack },
 ]
 
-function JournalView({ catches, spots, onOpenCatch, onOpenMap, cloudEnabled, syncStatus }) {
+function gearName(item) {
+  return [item?.brand, item?.model].filter(Boolean).join(' ') || item?.category || ''
+}
+
+function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, cloudEnabled, syncStatus }) {
   const spotById = useMemo(() => new Map(spots.map((spot) => [spot.id, spot])), [spots])
+  const gearById = useMemo(() => new Map(gear.map((item) => [item.id, item])), [gear])
 
   function catchLocation(item) {
     const linkedSpot = item.spotId ? spotById.get(item.spotId) : null
@@ -42,6 +47,12 @@ function JournalView({ catches, spots, onOpenCatch, onOpenMap, cloudEnabled, syn
       label: item.locationLabel || linkedSpot?.name || '',
       hasCoordinates: hasCoordinates || Boolean(linkedSpot),
     }
+  }
+
+  function catchGear(item) {
+    return (item.gearIds ?? [])
+      .map((id) => gearById.get(id))
+      .filter(Boolean)
   }
 
   return (
@@ -67,6 +78,10 @@ function JournalView({ catches, spots, onOpenCatch, onOpenMap, cloudEnabled, syn
         <section className="journal-list">
           {catches.map((item) => {
             const location = catchLocation(item)
+            const linkedGear = catchGear(item)
+            const visibleGear = linkedGear.slice(0, 3).map(gearName).filter(Boolean)
+            const extraGear = Math.max(0, linkedGear.length - visibleGear.length)
+
             return (
               <article className="catch-card" key={item.id}>
                 <div className="catch-icon"><Fish /></div>
@@ -77,6 +92,9 @@ function JournalView({ catches, spots, onOpenCatch, onOpenMap, cloudEnabled, syn
                   </div>
                   <p>{[item.lure, item.weight ? `${item.weight} kg` : '', item.length ? `${item.length} cm` : ''].filter(Boolean).join(' · ') || 'Nessun dettaglio aggiuntivo'}</p>
                   {location.label && <div className="catch-location-line"><MapPin size={14} /> {location.label}</div>}
+                  {visibleGear.length > 0 && (
+                    <div className="catch-location-line"><Backpack size={14} /> {visibleGear.join(' · ')}{extraGear ? ` · +${extraGear}` : ''}</div>
+                  )}
                   {item.notes && <small>{item.notes}</small>}
                   {location.hasCoordinates && (
                     <button type="button" className="catch-map-link" onClick={() => onOpenMap(item)}>
@@ -98,6 +116,7 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, c
   const geolocatedCatches = catches.filter((item) => (
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
   ) || item.spotId).length
+  const catchesWithGear = catches.filter((item) => (item.gearIds ?? []).length > 0).length
 
   return (
     <>
@@ -127,7 +146,7 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, c
           <span className="status-pill ready">Attiva</span>
         </div>
         <div className="connection-row">
-          <div><strong>Attrezzatura</strong><span>{gear.length} elementi nell’inventario</span></div>
+          <div><strong>Attrezzatura</strong><span>{gear.length} elementi · {catchesWithGear} catture collegate</span></div>
           <span className="status-pill ready">Attiva</span>
         </div>
         <div className="connection-row">
@@ -307,9 +326,9 @@ function App() {
       if (user) {
         const saved = await createRemoteCatch(user.id, item)
         setCatches((current) => [saved, ...current])
-        setSyncStatus('Cattura salvata nel cloud.')
+        setSyncStatus('Cattura e attrezzatura salvate nel cloud.')
       } else {
-        setCatches((current) => [{ ...item, synced: false }, ...current])
+        setCatches((current) => [{ ...item, gearIds: item.gearIds ?? [], synced: false }, ...current])
       }
       setCatchModalOpen(false)
       setActiveView('journal')
@@ -407,7 +426,11 @@ function App() {
     try {
       if (user) await deleteRemoteGear(user.id, item.id)
       setGear((current) => current.filter((candidate) => candidate.id !== item.id))
-      setGearStatus(user ? 'Elemento eliminato dal cloud.' : 'Elemento eliminato dal dispositivo.')
+      setCatches((current) => current.map((caught) => ({
+        ...caught,
+        gearIds: (caught.gearIds ?? []).filter((gearId) => gearId !== item.id),
+      })))
+      setGearStatus(user ? 'Elemento eliminato dal cloud e rimosso dalle associazioni.' : 'Elemento eliminato dal dispositivo e rimosso dalle associazioni.')
     } catch (error) {
       setGearStatus(error?.message || 'Impossibile eliminare l’attrezzatura.')
     }
@@ -458,6 +481,7 @@ function App() {
       <JournalView
         catches={catches}
         spots={spots}
+        gear={gear}
         onOpenCatch={() => setCatchModalOpen(true)}
         onOpenMap={openCatchOnMap}
         cloudEnabled={Boolean(user)}
@@ -547,6 +571,7 @@ function App() {
           onSave={saveCatch}
           saving={savingCatch}
           spots={spots}
+          gear={gear}
           activeLocation={forecastLocation}
           activeLocationLabel={locationLabel}
         />

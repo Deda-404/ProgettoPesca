@@ -14,11 +14,12 @@ function toAppCatch(row) {
     latitude: row.latitude == null ? null : Number(row.latitude),
     longitude: row.longitude == null ? null : Number(row.longitude),
     locationLabel: row.location_label ?? '',
+    gearIds: (row.catch_gear ?? []).map((link) => link.gear_id).filter(Boolean),
     synced: true,
   }
 }
 
-const catchSelect = 'id, species, caught_at, weight_kg, length_cm, lure, notes, photo_url, spot_id, latitude, longitude, location_label'
+const catchSelect = 'id, species, caught_at, weight_kg, length_cm, lure, notes, photo_url, spot_id, latitude, longitude, location_label, catch_gear(gear_id)'
 
 export async function loadRemoteCatches(userId) {
   if (!supabase || !userId) return []
@@ -28,6 +29,7 @@ export async function loadRemoteCatches(userId) {
     .select(catchSelect)
     .eq('user_id', userId)
     .order('caught_at', { ascending: false })
+    .limit(250)
 
   if (error) throw error
   return (data ?? []).map(toAppCatch)
@@ -37,6 +39,7 @@ export async function createRemoteCatch(userId, item) {
   if (!supabase || !userId) throw new Error('Supabase non configurato o utente non autenticato.')
 
   const hasCoordinates = Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
+  const gearIds = [...new Set((item.gearIds ?? []).filter(Boolean))]
 
   const payload = {
     user_id: userId,
@@ -56,9 +59,24 @@ export async function createRemoteCatch(userId, item) {
   const { data, error } = await supabase
     .from('catches')
     .insert(payload)
-    .select(catchSelect)
+    .select('id, species, caught_at, weight_kg, length_cm, lure, notes, photo_url, spot_id, latitude, longitude, location_label')
     .single()
 
   if (error) throw error
-  return toAppCatch(data)
+
+  if (gearIds.length) {
+    const { error: linkError } = await supabase
+      .from('catch_gear')
+      .insert(gearIds.map((gearId) => ({ catch_id: data.id, gear_id: gearId })))
+
+    if (linkError) {
+      await supabase.from('catches').delete().eq('id', data.id).eq('user_id', userId)
+      throw linkError
+    }
+  }
+
+  return toAppCatch({
+    ...data,
+    catch_gear: gearIds.map((gearId) => ({ gear_id: gearId })),
+  })
 }
