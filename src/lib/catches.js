@@ -11,16 +11,21 @@ function toAppCatch(row) {
     notes: row.notes ?? '',
     photoUrl: row.photo_url ?? '',
     spotId: row.spot_id ?? null,
+    latitude: row.latitude == null ? null : Number(row.latitude),
+    longitude: row.longitude == null ? null : Number(row.longitude),
+    locationLabel: row.location_label ?? '',
     synced: true,
   }
 }
+
+const catchSelect = 'id, species, caught_at, weight_kg, length_cm, lure, notes, photo_url, spot_id, latitude, longitude, location_label'
 
 export async function loadRemoteCatches(userId) {
   if (!supabase || !userId) return []
 
   const { data, error } = await supabase
     .from('catches')
-    .select('id, species, caught_at, weight_kg, length_cm, lure, notes, photo_url, spot_id')
+    .select(catchSelect)
     .eq('user_id', userId)
     .order('caught_at', { ascending: false })
 
@@ -30,6 +35,8 @@ export async function loadRemoteCatches(userId) {
 
 export async function createRemoteCatch(userId, item) {
   if (!supabase || !userId) throw new Error('Supabase non configurato o utente non autenticato.')
+
+  const hasCoordinates = Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
 
   const payload = {
     user_id: userId,
@@ -41,12 +48,15 @@ export async function createRemoteCatch(userId, item) {
     notes: item.notes || null,
     photo_url: item.photoUrl || null,
     spot_id: item.spotId || null,
+    latitude: hasCoordinates ? Number(item.latitude) : null,
+    longitude: hasCoordinates ? Number(item.longitude) : null,
+    location_label: item.locationLabel?.trim() || null,
   }
 
   const { data, error } = await supabase
     .from('catches')
     .insert(payload)
-    .select('id, species, caught_at, weight_kg, length_cm, lure, notes, photo_url, spot_id')
+    .select(catchSelect)
     .single()
 
   if (error) throw error

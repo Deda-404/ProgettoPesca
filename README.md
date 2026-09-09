@@ -6,26 +6,34 @@ XFish è una webapp/PWA mobile-first per previsioni di pesca, condizioni mare/me
 
 XFish è pensata per l'intero territorio italiano, con priorità operativa sulla costa compresa tra Livorno e La Spezia.
 
-La posizione predefinita è Marina di Massa. Sono disponibili scorciatoie rapide per:
+La posizione predefinita è Marina di Massa. Sono disponibili scorciatoie rapide per Livorno, Viareggio, Forte dei Marmi, Marina di Massa, Marina di Carrara, Lerici e La Spezia. Quando l'utente autorizza il GPS, le previsioni vengono ricalcolate sulle coordinate reali.
 
-- Livorno
-- Viareggio
-- Forte dei Marmi
-- Marina di Massa
-- Marina di Carrara
-- Lerici
-- La Spezia
+## Vincolo di costo
 
-Quando l'utente autorizza il GPS, le previsioni vengono ricalcolate sulle coordinate reali.
+XFish deve restare utilizzabile sui piani gratuiti di Render e Supabase.
+
+Principi architetturali:
+
+- Render usato come hosting statico della PWA, senza server sempre acceso
+- un solo progetto Supabase per Auth, PostgreSQL e Storage
+- niente servizi/add-on a pagamento attivati automaticamente
+- niente polling o Realtime non necessari
+- Leaflet caricato in lazy loading soltanto all'apertura della mappa
+- immagini future compresse nel browser prima dell'upload
+- query e trasferimenti dati mantenuti piccoli e paginati quando necessario
+- cache PWA e cache applicativa per ridurre richieste e banda
+
+Qualunque futura funzionalità che richieda un costo deve avere prima un'alternativa gratuita oppure una decisione esplicita.
 
 ## Stack
 
 - React + Vite
 - Supabase (Auth, PostgreSQL, Storage)
-- Render (hosting statico)
+- Render Static Site
 - PWA installabile su Android e desktop
 - Open-Meteo Weather API
 - Open-Meteo Marine API
+- OpenStreetMap + Leaflet
 
 ## Previsioni meteo-marine
 
@@ -36,44 +44,33 @@ La dashboard usa dati reali e separa correttamente terra e mare:
 - fuso orario: `Europe/Rome`
 - previsione: 7 giorni
 
-Dati principali:
-
-- temperatura e temperatura percepita
-- umidità
-- pressione atmosferica e tendenza
-- vento, direzione e raffiche
-- probabilità di precipitazione
-- altezza, direzione e periodo dell'onda
-- swell
-- temperatura superficiale del mare
-- corrente marina
-- livello marino modellato
-- alba e tramonto
-- sorgere e tramontare della luna
-- fase e illuminazione lunare stimata
+Dati principali: temperatura, umidità, pressione, vento e raffiche, precipitazioni, onda, swell, temperatura superficiale del mare, corrente marina, livello marino modellato, alba/tramonto, moonrise/moonset e fase lunare.
 
 ### Maree / livello marino
 
-XFish usa `sea_level_height_msl` della Marine API. Per le prossime 48 ore richiede la serie a 15 minuti quando disponibile e individua massimi/minimi locali per mostrare la tendenza di alta e bassa marea.
-
-Il valore include marea astronomica e altri contributi al livello marino. Sulla costa tirrenica e ligure l'escursione è spesso contenuta. Il dato è utile come indicazione per la pesca, ma non deve essere usato per la navigazione.
+XFish usa `sea_level_height_msl` della Marine API. Per le prossime 48 ore richiede la serie a 15 minuti quando disponibile e individua massimi/minimi locali. Il dato è utile come indicazione per la pesca, ma non deve essere usato per la navigazione.
 
 ### Finestre solunari
 
-Le finestre minori sono centrate su moonrise e moonset. Le finestre maggiori sono una stima ottenuta dal transito lunare approssimato a partire da moonrise/moonset. Sono quindi un indicatore euristico, non una previsione scientifica della presenza di pesce.
+Le finestre minori sono centrate su moonrise e moonset. Le finestre maggiori sono una stima del transito lunare ottenuta da moonrise/moonset. Sono indicatori euristici, non una garanzia di cattura.
 
 ### Indice XFish
 
-L'indice 0–100 combina in modo trasparente:
+L'indice 0–100 combina vento, raffiche, onda, precipitazioni, stabilità della pressione, fase lunare e variazione del livello marino. Serve a confrontare giornate e finestre temporali.
 
-- vento e raffiche
-- onda
-- precipitazioni
-- stabilità della pressione
-- fase lunare
-- variazione del livello marino
+## Mappa, spot e catture
 
-L'indice serve a confrontare giornate e finestre temporali e non rappresenta una garanzia di cattura.
+La mappa usa OpenStreetMap/Leaflet e supporta:
+
+- GPS e centro mappa sulla località attiva
+- spot privati con nome, tipo, note e coordinate
+- salvataggio cloud per utenti autenticati e locale per ospiti
+- marker separati per spot e catture
+- associazione della cattura a uno spot già salvato
+- GPS preciso della singola cattura
+- apertura di una cattura del diario direttamente sulla mappa
+
+La mappa viene caricata dinamicamente solo quando viene aperta, così il bundle iniziale resta più leggero su smartphone e si riduce il traffico.
 
 ## Avvio locale
 
@@ -90,34 +87,26 @@ VITE_SUPABASE_URL=...
 VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
-Il client mantiene compatibilità anche con `VITE_SUPABASE_ANON_KEY`, ma per nuovi progetti viene usata la publishable key moderna.
-
 ## Database Supabase
 
-Lo schema iniziale è in `supabase/schema.sql` e comprende:
+Lo schema comprende:
 
 - `profiles`
 - `fishing_spots`
 - `catches`
 - `gear`
 
-Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati.
+Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Le catture possono memorizzare anche `latitude`, `longitude`, `location_label` e il riferimento opzionale a `spot_id`.
+
+Gli indici duplicati non necessari sono stati rimossi per ridurre spazio e scritture sul piano gratuito; restano gli indici funzionali alle query reali dell'app.
 
 ## Autenticazione
 
-Sono disponibili:
-
-- registrazione email/password
-- login email/password
-- sessione persistente
-- modalità ospite locale
-- caricamento delle catture dal cloud dopo il login
-- salvataggio delle nuove catture direttamente su Supabase
-- profilo con stato cloud e logout
+Sono disponibili registrazione/login email-password, sessione persistente, modalità ospite locale, sincronizzazione cloud di catture e spot e logout.
 
 ## Deploy Render
 
-Il file `render.yaml` è predisposto per una Static Site XFish. Su Render vanno configurate:
+Il file `render.yaml` è predisposto per una Static Site XFish. Variabili richieste:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
@@ -131,9 +120,10 @@ Il file `render.yaml` è predisposto per una Static Site XFish. Su Render vanno 
 
 ## Roadmap
 
-1. fondazione mobile-first / PWA
-2. autenticazione e sincronizzazione Supabase
-3. previsioni meteo-marine e indice pesca
-4. mappa reale con OpenStreetMap/Leaflet
-5. gestione attrezzatura completa
-6. foto catture e spot
+1. fondazione mobile-first / PWA ✅
+2. autenticazione e sincronizzazione Supabase ✅
+3. previsioni meteo-marine e indice pesca ✅
+4. mappa reale con OpenStreetMap/Leaflet ✅
+5. catture geolocalizzate e collegamento diario-mappa ✅
+6. gestione attrezzatura completa
+7. foto catture e spot con compressione client-side

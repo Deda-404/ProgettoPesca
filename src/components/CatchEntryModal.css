@@ -1,0 +1,21 @@
+.catch-entry-modal { max-height: min(92vh, 860px); overflow-y: auto; }
+.catch-location-panel { display: grid; gap: 12px; padding: 13px; border-radius: 16px; background: #0a1a18; border: 1px solid rgba(188,226,216,.09); }
+.catch-location-title { display: flex; gap: 10px; align-items: flex-start; color: #bde7dc; }
+.catch-location-title > svg { flex: 0 0 auto; margin-top: 2px; }
+.catch-location-title strong, .catch-location-title span { display: block; }
+.catch-location-title strong { font-size: .9rem; }
+.catch-location-title span { margin-top: 3px; color: #78938d; font-size: .73rem; font-weight: 500; }
+.catch-location-panel label { margin: 0; }
+.catch-location-panel select { width: 100%; min-height: 46px; margin-top: 6px; border: 1px solid rgba(197,227,219,.11); background: #071514; color: #f2f6f5; border-radius: 13px; padding: 12px 13px; }
+.catch-location-actions { display: grid; gap: 8px; grid-template-columns: 1fr; }
+.catch-location-actions button { width: 100%; justify-content: center; }
+.catch-location-readout { position: relative; padding: 11px 12px; border-radius: 13px; background: #071514; }
+.catch-location-readout span, .catch-location-readout strong { display: block; }
+.catch-location-readout span { color: #8ba19c; font-size: .74rem; }
+.catch-location-readout strong { margin-top: 4px; color: #eaf5f2; font-size: .82rem; overflow-wrap: anywhere; }
+.catch-location-readout button { margin-top: 8px; padding: 0; border: 0; background: transparent; color: #d49c9c; font-size: .73rem; text-decoration: underline; }
+.catch-location-status { color: #7d9892; line-height: 1.35; }
+
+@media (min-width: 540px) {
+  .catch-location-actions { grid-template-columns: 1fr 1fr; }
+}

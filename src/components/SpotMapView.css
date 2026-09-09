@@ -1,3 +1,8 @@
+.map-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.map-legend span { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 999px; background: #0b1a19; color: #8fa7a1; font-size: .75rem; border: 1px solid rgba(255,255,255,.05); }
+.legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; border: 2px solid rgba(255,255,255,.65); }
+.legend-dot.spot { background: #50bda3; }
+.legend-dot.catch { background: #f0b45c; }
 .spot-map-layout { display: grid; gap: 14px; }
 .spot-map-card { padding: 0; overflow: hidden; }
 .spot-map-toolbar { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: #0b1a19; border-bottom: 1px solid rgba(255,255,255,.05); }
@@ -28,6 +33,10 @@
 .spot-row span { margin-top: 3px; color: #819a95; font-size: .76rem; }
 .spot-row small { margin-top: 5px; color: #6f8883; line-height: 1.35; }
 .spot-delete { width: 40px; height: 40px; border: 0; border-radius: 12px; background: rgba(210,103,103,.09); color: #e3a2a2; display: grid; place-items: center; }
+.map-catch-summary { display: flex; gap: 11px; align-items: flex-start; }
+.map-catch-summary > svg { flex: 0 0 auto; color: #f0b45c; margin-top: 2px; }
+.map-catch-summary strong, .map-catch-summary span { display: block; }
+.map-catch-summary span { margin-top: 4px; color: #7f9892; font-size: .78rem; line-height: 1.4; }
 
 @media (min-width: 620px) {
   .spot-map-toolbar { flex-direction: row; align-items: center; justify-content: space-between; }

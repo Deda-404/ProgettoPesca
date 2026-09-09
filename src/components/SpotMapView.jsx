@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { LocateFixed, MapPin, Plus, Trash2 } from 'lucide-react'
+import { Fish, LocateFixed, MapPin, Plus, Trash2 } from 'lucide-react'
 import './SpotMapView.css'
 
 const SPOT_TYPES = [
@@ -17,10 +17,36 @@ function formatCoordinate(value) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(5) : '—'
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function catchCoordinates(item, spots) {
+  const directLat = Number(item.latitude)
+  const directLon = Number(item.longitude)
+  if (Number.isFinite(directLat) && Number.isFinite(directLon)) {
+    return { latitude: directLat, longitude: directLon }
+  }
+
+  if (!item.spotId) return null
+  const spot = spots.find((candidate) => candidate.id === item.spotId)
+  if (!spot) return null
+
+  const latitude = Number(spot.latitude)
+  const longitude = Number(spot.longitude)
+  return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null
+}
+
 export default function SpotMapView({
   location,
   locationLabel,
   spots,
+  catches = [],
   onLocate,
   onSaveSpot,
   onDeleteSpot,
@@ -31,11 +57,16 @@ export default function SpotMapView({
   const mapNodeRef = useRef(null)
   const mapRef = useRef(null)
   const spotLayerRef = useRef(null)
+  const catchLayerRef = useRef(null)
   const draftLayerRef = useRef(null)
   const [draftPoint, setDraftPoint] = useState(null)
   const [form, setForm] = useState({ name: '', type: 'spiaggia', notes: '', isPrivate: true })
 
   const center = useMemo(() => [Number(location.latitude), Number(location.longitude)], [location.latitude, location.longitude])
+  const geolocatedCatchCount = useMemo(
+    () => catches.filter((item) => catchCoordinates(item, spots)).length,
+    [catches, spots],
+  )
 
   useEffect(() => {
     if (!mapNodeRef.current || mapRef.current) return
@@ -51,6 +82,7 @@ export default function SpotMapView({
     }).addTo(map)
 
     spotLayerRef.current = L.layerGroup().addTo(map)
+    catchLayerRef.current = L.layerGroup().addTo(map)
 
     map.on('click', (event) => {
       setDraftPoint({ latitude: event.latlng.lat, longitude: event.latlng.lng })
@@ -87,13 +119,41 @@ export default function SpotMapView({
       })
 
       marker.bindPopup(
-        `<strong>${String(spot.name).replaceAll('<', '&lt;')}</strong><br>` +
-        `${String(spot.type || 'spot').replaceAll('<', '&lt;')}` +
-        `${spot.notes ? `<br>${String(spot.notes).replaceAll('<', '&lt;')}` : ''}`,
+        `<strong>${escapeHtml(spot.name)}</strong><br>` +
+        `${escapeHtml(spot.type || 'spot')}` +
+        `${spot.notes ? `<br>${escapeHtml(spot.notes)}` : ''}`,
       )
       marker.addTo(layer)
     })
   }, [spots])
+
+  useEffect(() => {
+    const layer = catchLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+
+    catches.forEach((item) => {
+      const coordinates = catchCoordinates(item, spots)
+      if (!coordinates) return
+
+      const marker = L.circleMarker([coordinates.latitude, coordinates.longitude], {
+        radius: 6,
+        weight: 2,
+        color: '#fff2c7',
+        fillColor: '#f0b45c',
+        fillOpacity: 0.95,
+      })
+
+      const date = item.caughtAt ? new Date(item.caughtAt).toLocaleDateString('it-IT') : ''
+      const detail = [date, item.lure, item.weight ? `${item.weight} kg` : ''].filter(Boolean).join(' · ')
+      marker.bindPopup(
+        `<strong>🐟 ${escapeHtml(item.species)}</strong>` +
+        `${detail ? `<br>${escapeHtml(detail)}` : ''}` +
+        `${item.locationLabel ? `<br>${escapeHtml(item.locationLabel)}` : ''}`,
+      )
+      marker.addTo(layer)
+    })
+  }, [catches, spots])
 
   useEffect(() => {
     if (!mapRef.current) return
@@ -140,7 +200,7 @@ export default function SpotMapView({
       <section className="page-intro compact">
         <div>
           <div className="eyebrow">Mappa reale · OpenStreetMap</div>
-          <h1>Spot di pesca</h1>
+          <h1>Spot e catture</h1>
           <p>
             Tocca la mappa per scegliere un punto oppure usa il GPS. Gli spot sono privati per impostazione predefinita.
             {cloudEnabled ? ' Sono sincronizzati con il tuo account XFish.' : ' In modalità ospite restano su questo dispositivo.'}
@@ -151,6 +211,11 @@ export default function SpotMapView({
 
       {status && <div className="status-banner">{status}</div>}
 
+      <div className="map-legend" aria-label="Legenda mappa">
+        <span><i className="legend-dot spot" /> Spot {spots.length}</span>
+        <span><i className="legend-dot catch" /> Catture {geolocatedCatchCount}</span>
+      </div>
+
       <div className="spot-map-layout">
         <section className="section-block spot-map-card">
           <div className="spot-map-toolbar">
@@ -160,7 +225,7 @@ export default function SpotMapView({
             </div>
             <button type="button" className="secondary-button" onClick={useCurrentLocation}><MapPin size={17} /> Usa questo punto</button>
           </div>
-          <div ref={mapNodeRef} className="spot-map-canvas" aria-label="Mappa interattiva degli spot di pesca" />
+          <div ref={mapNodeRef} className="spot-map-canvas" aria-label="Mappa interattiva degli spot e delle catture di pesca" />
         </section>
 
         <aside className="section-block spot-editor">
@@ -223,6 +288,13 @@ export default function SpotMapView({
           </div>
         )}
       </section>
+
+      {geolocatedCatchCount > 0 && (
+        <section className="section-block map-catch-summary">
+          <Fish size={20} />
+          <div><strong>{geolocatedCatchCount} catture sulla mappa</strong><span>Le catture con GPS o spot associato vengono mostrate con marker dorati.</span></div>
+        </section>
+      )}
     </>
   )
 }
