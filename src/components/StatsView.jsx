@@ -19,22 +19,34 @@ function MetricCard({ icon: Icon, label, value, detail }) {
   return (
     <article className="stats-metric-card">
       <div className="stats-metric-icon"><Icon size={20} /></div>
-      <div><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        {detail ? <small>{detail}</small> : null}
+      </div>
     </article>
   )
 }
 
 function Ranking({ title, icon: Icon, items, emptyText }) {
   const max = items[0]?.count || 1
+
   return (
     <section className="section-block stats-ranking-card">
       <div className="stats-section-title"><Icon size={19} /><h2>{title}</h2></div>
-      {items.length === 0 ? <p className="stats-empty-line">{emptyText}</p> : (
+      {items.length === 0 ? (
+        <p className="stats-empty-line">{emptyText}</p>
+      ) : (
         <div className="stats-ranking-list">
           {items.map((item, index) => (
             <div className="stats-ranking-row" key={item.key}>
-              <div className="stats-ranking-head"><span><b>{index + 1}</b>{item.label}</span><strong>{item.count}</strong></div>
-              <div className="stats-bar"><i style={{ width: `${Math.max(8, Math.round((item.count / max) * 100))}%` }} /></div>
+              <div className="stats-ranking-head">
+                <span><b>{index + 1}</b>{item.label}</span>
+                <strong>{item.count}</strong>
+              </div>
+              <div className="stats-bar">
+                <i style={{ width: `${Math.max(8, Math.round((item.count / max) * 100))}%` }} />
+              </div>
             </div>
           ))}
         </div>
@@ -45,17 +57,21 @@ function Ranking({ title, icon: Icon, items, emptyText }) {
 
 function Distribution({ title, icon: Icon, items }) {
   const max = Math.max(1, ...items.map((item) => item.count))
+
   return (
     <section className="section-block stats-distribution-card">
       <div className="stats-section-title"><Icon size={19} /><h2>{title}</h2></div>
       <div className="stats-distribution-list">
-        {items.map((item) => (
-          <div className="stats-distribution-row" key={item.id ?? item.month}>
-            <span>{item.label}</span>
-            <div className="stats-bar"><i style={{ width: `${item.count ? Math.max(6, Math.round((item.count / max) * 100)) : 0}%` }} /></div>
-            <strong>{item.count}</strong>
-          </div>
-        ))}
+        {items.map((item) => {
+          const width = item.count ? Math.max(6, Math.round((item.count / max) * 100)) : 0
+          return (
+            <div className="stats-distribution-row" key={item.id ?? item.month}>
+              <span>{item.label}</span>
+              <div className="stats-bar"><i style={{ width: `${width}%` }} /></div>
+              <strong>{item.count}</strong>
+            </div>
+          )
+        })}
       </div>
     </section>
   )
@@ -69,21 +85,25 @@ export default function StatsView({ catches, spots, gear }) {
     return (
       <>
         <section className="page-intro compact">
-          <div><div className="eyebrow">Analisi personale</div><h1>Statistiche XFish</h1><p>Le statistiche vengono calcolate sul tuo diario, senza servizi esterni o costi aggiuntivi.</p></div>
-      </section>
-      <section className="section-block stats-empty-state">
-        <BarChart3 size={38} />
-        <h2>Servono alcune catture</h2>
-        <p>Registra le prime catture con specie, spot, orario e attrezzatura. XFish inizierà automaticamente a mostrarti tendenze utili.</p>
-      </section>
-    </>
-  )
+          <div>
+            <div className="eyebrow">Analisi personale</div>
+            <h1>Statistiche XFish</h1>
+            <p>Le statistiche vengono calcolate sul tuo diario, senza servizi esterni o costi aggiuntivi.</p>
+          </div>
+        </section>
+        <section className="section-block stats-empty-state">
+          <BarChart3 size={38} />
+          <h2>Servono alcune catture</h2>
+          <p>Registra le prime catture con specie, spot, orario e attrezzatura. XFish inizierà automaticamente a mostrarti tendenze utili.</p>
+        </section>
+      </>
+    )
+  }
 
-  const insightParts = [
-    stats.topSpecies[0] ? `Specie principale: ${stats.topSpecies[0].label}` : '',
-    stats.topSpots[0] ? `spot più produttivo: ${stats.topSpots[0].label}` : '',
-    stats.topGear[0] ? `attrezzatura più usata: ${stats.topGear[0].label}` : '',
-  ].filter(Boolean)
+  const insightParts = []
+  if (stats.topSpecies[0]) insightParts.push(`Specie principale: ${stats.topSpecies[0].label}`)
+  if (stats.topSpots[0]) insightParts.push(`spot più produttivo: ${stats.topSpots[0].label}`)
+  if (stats.topGear[0]) insightParts.push(`attrezzatura più usata: ${stats.topGear[0].label}`)
 
   return (
     <>
@@ -105,7 +125,7 @@ export default function StatsView({ catches, spots, gear }) {
         <MetricCard icon={Ruler} label="Lunghezza media" value={totals.averageLength ? `${totals.averageLength} cm` : '—'} detail="solo misure note" />
       </section>
 
-      {(stats.bestMonth || stats.bestTimeBand) && (
+      {(stats.bestMonth || stats.bestTimeBand) ? (
         <section className="section-block stats-highlight">
           <Trophy size={24} />
           <div>
@@ -117,7 +137,7 @@ export default function StatsView({ catches, spots, gear }) {
             </span>
           </div>
         </section>
-      )}
+      ) : null}
 
       <section className="stats-rankings-grid">
         <Ranking title="Specie più catturate" icon={Fish} items={stats.topSpecies} emptyText="Nessuna specie disponibile." />
@@ -131,12 +151,15 @@ export default function StatsView({ catches, spots, gear }) {
         <Distribution title="Catture per fascia oraria" icon={Clock3} items={stats.timeBandCounts} />
       </section>
 
-      {insightParts.length > 0 && (
+      {insightParts.length > 0 ? (
         <section className="section-block stats-note">
           <BarChart3 size={20} />
-          <div><strong>Lettura rapida</strong><span>{insightParts.join(' · ')}.</span></div>
+          <div>
+            <strong>Lettura rapida</strong>
+            <span>{insightParts.join(' · ')}.</span>
+          </div>
         </section>
-      )}
+      ) : null}
     </>
   )
 }
