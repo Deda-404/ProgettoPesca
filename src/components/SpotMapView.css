@@ -1,0 +1,40 @@
+.spot-map-layout { display: grid; gap: 14px; }
+.spot-map-card { padding: 0; overflow: hidden; }
+.spot-map-toolbar { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: #0b1a19; border-bottom: 1px solid rgba(255,255,255,.05); }
+.spot-map-toolbar > div strong, .spot-map-toolbar > div span { display: block; }
+.spot-map-toolbar > div span { margin-top: 3px; color: #809a95; font-size: .78rem; }
+.spot-map-canvas { width: 100%; height: min(54vh, 520px); min-height: 360px; background: #0b1716; }
+.spot-map-canvas .leaflet-control-zoom a { background: #102220; color: #d8f5ed; border-color: rgba(255,255,255,.07); }
+.spot-map-canvas .leaflet-control-attribution { background: rgba(7,17,16,.82); color: #89a19c; }
+.spot-map-canvas .leaflet-control-attribution a { color: #a8ded0; }
+.spot-map-canvas .leaflet-popup-content-wrapper, .spot-map-canvas .leaflet-popup-tip { background: #102220; color: #eef6f3; }
+.spot-editor { margin-top: 0; }
+.spot-form { display: grid; gap: 12px; margin-top: 14px; }
+.spot-form label { color: #a9bdb8; font-size: .8rem; font-weight: 700; }
+.spot-form input, .spot-form textarea, .spot-form select { width: 100%; margin-top: 6px; border: 1px solid rgba(197,227,219,.11); background: #071514; color: #f2f6f5; border-radius: 13px; padding: 12px 13px; min-height: 46px; }
+.spot-form select { appearance: none; }
+.spot-private-toggle { display: flex; align-items: center; gap: 9px; }
+.spot-private-toggle input { width: 18px; min-height: 18px; height: 18px; margin: 0; }
+.spot-coordinate-box { padding: 12px; border-radius: 13px; background: #0b1a19; }
+.spot-coordinate-box span, .spot-coordinate-box strong { display: block; }
+.spot-coordinate-box span { color: #77908b; font-size: .74rem; margin-bottom: 4px; }
+.spot-coordinate-box strong { font-size: .82rem; overflow-wrap: anywhere; }
+.spot-list-card { margin-bottom: 10px; }
+.spot-empty { padding: 22px 4px 8px; color: #829994; font-size: .88rem; }
+.spot-list { display: grid; gap: 9px; margin-top: 14px; }
+.spot-row { display: grid; grid-template-columns: 42px minmax(0,1fr) 40px; gap: 10px; align-items: center; padding: 12px; background: #0b1a19; border-radius: 15px; }
+.spot-row-icon { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; background: #102422; color: #8bd1c0; }
+.spot-row strong, .spot-row span, .spot-row small { display: block; }
+.spot-row span { margin-top: 3px; color: #819a95; font-size: .76rem; }
+.spot-row small { margin-top: 5px; color: #6f8883; line-height: 1.35; }
+.spot-delete { width: 40px; height: 40px; border: 0; border-radius: 12px; background: rgba(210,103,103,.09); color: #e3a2a2; display: grid; place-items: center; }
+
+@media (min-width: 620px) {
+  .spot-map-toolbar { flex-direction: row; align-items: center; justify-content: space-between; }
+}
+
+@media (min-width: 980px) {
+  .spot-map-layout { grid-template-columns: minmax(0, 1.7fr) minmax(300px, .8fr); align-items: start; }
+  .spot-editor { position: sticky; top: 20px; }
+  .spot-map-canvas { min-height: 580px; height: calc(100vh - 235px); max-height: 720px; }
+}
