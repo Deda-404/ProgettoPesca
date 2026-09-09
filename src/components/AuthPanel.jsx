@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Fish, LockKeyhole, Mail, UserRound } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import '../auth.css'
 
 export default function AuthPanel({ onGuest }) {
   const [mode, setMode] = useState('login')
@@ -50,7 +51,7 @@ export default function AuthPanel({ onGuest }) {
     <div className="auth-screen">
       <section className="auth-card">
         <div className="auth-brand-mark"><Fish size={34} /></div>
-        <div className="eyebrow">Progetto Pesca</div>
+        <div className="eyebrow">XFish</div>
         <h1>{mode === 'login' ? 'Bentornato' : 'Crea il tuo profilo'}</h1>
         <p className="auth-copy">
           Salva catture, spot e attrezzatura nel cloud e ritrovali su telefono e computer.
