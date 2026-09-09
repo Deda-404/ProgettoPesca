@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   Backpack,
   Fish,
   LogOut,
+  MapPin,
   MapPinned,
   NotebookTabs,
   Plus,
   Settings,
   Sun,
-  X,
 } from 'lucide-react'
 import AuthPanel from './components/AuthPanel'
+import CatchEntryModal from './components/CatchEntryModal'
 import LiveForecastView from './components/LiveForecastView'
-import SpotMapView from './components/SpotMapView'
 import { DEFAULT_LOCATION, isInItaly, nearestPreset } from './config/locations'
 import { useAuth } from './hooks/useAuth'
 import { useFishingForecast } from './hooks/useFishingForecast'
@@ -21,6 +21,8 @@ import { createRemoteSpot, deleteRemoteSpot, loadRemoteSpots } from './lib/spots
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
 
+const SpotMapView = lazy(() => import('./components/SpotMapView'))
+
 const navItems = [
   { id: 'forecast', label: 'Previsioni', icon: Sun },
   { id: 'map', label: 'Mappa', icon: MapPinned },
@@ -28,7 +30,18 @@ const navItems = [
   { id: 'gear', label: 'Attrezzatura', icon: Backpack },
 ]
 
-function JournalView({ catches, onOpenCatch, cloudEnabled, syncStatus }) {
+function JournalView({ catches, spots, onOpenCatch, onOpenMap, cloudEnabled, syncStatus }) {
+  const spotById = useMemo(() => new Map(spots.map((spot) => [spot.id, spot])), [spots])
+
+  function catchLocation(item) {
+    const linkedSpot = item.spotId ? spotById.get(item.spotId) : null
+    const hasCoordinates = Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
+    return {
+      label: item.locationLabel || linkedSpot?.name || '',
+      hasCoordinates: hasCoordinates || Boolean(linkedSpot),
+    }
+  }
+
   return (
     <>
       <section className="page-intro compact">
@@ -50,19 +63,28 @@ function JournalView({ catches, onOpenCatch, cloudEnabled, syncStatus }) {
         </section>
       ) : (
         <section className="journal-list">
-          {catches.map((item) => (
-            <article className="catch-card" key={item.id}>
-              <div className="catch-icon"><Fish /></div>
-              <div>
-                <div className="catch-title-row">
-                  <h2>{item.species}</h2>
-                  <span>{new Date(item.caughtAt).toLocaleDateString('it-IT')}</span>
+          {catches.map((item) => {
+            const location = catchLocation(item)
+            return (
+              <article className="catch-card" key={item.id}>
+                <div className="catch-icon"><Fish /></div>
+                <div>
+                  <div className="catch-title-row">
+                    <h2>{item.species}</h2>
+                    <span>{new Date(item.caughtAt).toLocaleDateString('it-IT')}</span>
+                  </div>
+                  <p>{[item.lure, item.weight ? `${item.weight} kg` : '', item.length ? `${item.length} cm` : ''].filter(Boolean).join(' · ') || 'Nessun dettaglio aggiuntivo'}</p>
+                  {location.label && <div className="catch-location-line"><MapPin size={14} /> {location.label}</div>}
+                  {item.notes && <small>{item.notes}</small>}
+                  {location.hasCoordinates && (
+                    <button type="button" className="catch-map-link" onClick={() => onOpenMap(item)}>
+                      <MapPinned size={15} /> Vedi sulla mappa
+                    </button>
+                  )}
                 </div>
-                <p>{[item.lure, item.weight ? `${item.weight} kg` : '', item.length ? `${item.length} cm` : ''].filter(Boolean).join(' · ') || 'Nessun dettaglio aggiuntivo'}</p>
-                {item.notes && <small>{item.notes}</small>}
-              </div>
-            </article>
-          ))}
+              </article>
+            )
+          })}
         </section>
       )}
     </>
@@ -89,8 +111,11 @@ function GearView() {
   )
 }
 
-function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel }) {
+function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, catches, spots }) {
   const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ospite'
+  const geolocatedCatches = catches.filter((item) => (
+    Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
+  ) || item.spotId).length
 
   return (
     <>
@@ -116,7 +141,7 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel })
           <span className="status-pill ready">{locationLabel}</span>
         </div>
         <div className="connection-row">
-          <div><strong>Mappa spot</strong><span>OpenStreetMap · spot privati sincronizzati</span></div>
+          <div><strong>Mappa privata</strong><span>{spots.length} spot · {geolocatedCatches} catture geolocalizzate</span></div>
           <span className="status-pill ready">Attiva</span>
         </div>
         <div className="connection-row">
@@ -133,50 +158,18 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel })
   )
 }
 
-function CatchModal({ onClose, onSave, saving }) {
-  const [form, setForm] = useState({
-    species: '',
-    caughtAt: new Date().toISOString().slice(0, 16),
-    lure: '',
-    weight: '',
-    length: '',
-    notes: '',
-  })
-
-  const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
-
-  function submit(event) {
-    event.preventDefault()
-    if (!form.species.trim() || saving) return
-    onSave({ ...form, id: crypto.randomUUID(), species: form.species.trim() })
-  }
-
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="catch-modal" role="dialog" aria-modal="true" aria-labelledby="catch-title" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="modal-header">
-          <div><div className="eyebrow">Diario XFish</div><h2 id="catch-title">Registra una cattura</h2></div>
-          <button className="icon-button" onClick={onClose} aria-label="Chiudi"><X /></button>
-        </div>
-
-        <form onSubmit={submit} className="catch-form">
-          <label>Specie<input autoFocus required value={form.species} onChange={update('species')} placeholder="es. Spigola" /></label>
-          <label>Data e ora<input type="datetime-local" value={form.caughtAt} onChange={update('caughtAt')} /></label>
-          <label>Esca / artificiale<input value={form.lure} onChange={update('lure')} placeholder="es. Minnow 12 cm" /></label>
-          <div className="form-two-columns">
-            <label>Peso (kg)<input inputMode="decimal" value={form.weight} onChange={update('weight')} /></label>
-            <label>Lunghezza (cm)<input inputMode="decimal" value={form.length} onChange={update('length')} /></label>
-          </div>
-          <label>Note<textarea rows="3" value={form.notes} onChange={update('notes')} placeholder="Condizioni, recupero, osservazioni…" /></label>
-          <button className="primary-button full-width" type="submit" disabled={saving}>{saving ? 'Salvataggio…' : 'Salva cattura'}</button>
-        </form>
-      </section>
-    </div>
-  )
-}
-
 function LoadingScreen() {
   return <div className="auth-screen"><section className="auth-card"><div className="auth-brand-mark"><Fish size={34} /></div><div className="eyebrow">XFish</div><h1>Caricamento…</h1><p className="auth-copy">Sto ripristinando la tua sessione.</p></section></div>
+}
+
+function MapLoadingScreen() {
+  return (
+    <section className="section-block forecast-loading">
+      <MapPinned size={32} />
+      <strong>Carico la mappa…</strong>
+      <span>Leaflet viene scaricato solo quando apri questa sezione, per ridurre traffico e tempi di avvio.</span>
+    </section>
+  )
 }
 
 function App() {
@@ -282,7 +275,7 @@ function App() {
         setForecastLocation({ ...coordinates, name })
         setLocationStatus(
           isInItaly(coordinates)
-            ? 'Posizione aggiornata. Meteo su cella terrestre e mare sulla cella marina più vicina.'
+            ? `Posizione aggiornata · precisione circa ${Math.round(position.coords.accuracy)} m. Meteo su cella terrestre e mare sulla cella marina più vicina.`
             : 'Posizione fuori dall’Italia: XFish è configurato e verificato principalmente per il territorio italiano.',
         )
       },
@@ -347,7 +340,7 @@ function App() {
       if (user) {
         await deleteRemoteSpot(user.id, spot.id)
         setSpots((current) => current.filter((item) => item.id !== spot.id))
-        setSpotStatus('Spot eliminato dal cloud.')
+        setSpotStatus('Spot eliminato dal cloud. Le coordinate delle catture già registrate restano memorizzate.')
       } else {
         const next = spots.filter((item) => item.id !== spot.id)
         setSpots(next)
@@ -357,6 +350,20 @@ function App() {
     } catch (error) {
       setSpotStatus(error?.message || 'Impossibile eliminare lo spot.')
     }
+  }
+
+  function openCatchOnMap(item) {
+    const spot = item.spotId ? spots.find((candidate) => candidate.id === item.spotId) : null
+    const latitude = Number.isFinite(Number(item.latitude)) ? Number(item.latitude) : Number(spot?.latitude)
+    const longitude = Number.isFinite(Number(item.longitude)) ? Number(item.longitude) : Number(spot?.longitude)
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return
+
+    setForecastLocation({
+      latitude,
+      longitude,
+      name: item.locationLabel || spot?.name || `Cattura · ${item.species}`,
+    })
+    setActiveView('map')
   }
 
   async function signOut() {
@@ -370,24 +377,46 @@ function App() {
   let view
   if (activeView === 'map') {
     view = (
-      <SpotMapView
-        location={forecastLocation}
-        locationLabel={locationLabel}
-        spots={spots}
-        onLocate={locateUser}
-        onSaveSpot={saveSpot}
-        onDeleteSpot={deleteSpot}
-        saving={savingSpot}
-        status={spotStatus || locationStatus}
-        cloudEnabled={Boolean(user)}
-      />
+      <Suspense fallback={<MapLoadingScreen />}>
+        <SpotMapView
+          location={forecastLocation}
+          locationLabel={locationLabel}
+          spots={spots}
+          catches={catches}
+          onLocate={locateUser}
+          onSaveSpot={saveSpot}
+          onDeleteSpot={deleteSpot}
+          saving={savingSpot}
+          status={spotStatus || locationStatus}
+          cloudEnabled={Boolean(user)}
+        />
+      </Suspense>
     )
   } else if (activeView === 'journal') {
-    view = <JournalView catches={catches} onOpenCatch={() => setCatchModalOpen(true)} cloudEnabled={Boolean(user)} syncStatus={syncStatus} />
+    view = (
+      <JournalView
+        catches={catches}
+        spots={spots}
+        onOpenCatch={() => setCatchModalOpen(true)}
+        onOpenMap={openCatchOnMap}
+        cloudEnabled={Boolean(user)}
+        syncStatus={syncStatus}
+      />
+    )
   } else if (activeView === 'gear') {
     view = <GearView />
   } else if (activeView === 'profile') {
-    view = <ProfileView user={user} guestMode={!user} onSignOut={signOut} onExitGuest={() => setGuestMode(false)} locationLabel={locationLabel} />
+    view = (
+      <ProfileView
+        user={user}
+        guestMode={!user}
+        onSignOut={signOut}
+        onExitGuest={() => setGuestMode(false)}
+        locationLabel={locationLabel}
+        catches={catches}
+        spots={spots}
+      />
+    )
   } else {
     view = (
       <LiveForecastView
@@ -439,7 +468,16 @@ function App() {
         </nav>
       </div>
 
-      {catchModalOpen && <CatchModal onClose={() => setCatchModalOpen(false)} onSave={saveCatch} saving={savingCatch} />}
+      {catchModalOpen && (
+        <CatchEntryModal
+          onClose={() => setCatchModalOpen(false)}
+          onSave={saveCatch}
+          saving={savingCatch}
+          spots={spots}
+          activeLocation={forecastLocation}
+          activeLocationLabel={locationLabel}
+        />
+      )}
     </div>
   )
 }
