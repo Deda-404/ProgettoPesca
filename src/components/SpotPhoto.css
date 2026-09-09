@@ -1,0 +1,3 @@
+.spot-photo-wrap { margin-top: 8px; overflow: hidden; border-radius: 13px; background: #071514; }
+.spot-photo { display: block; width: 100%; max-height: 180px; object-fit: cover; }
+.spot-photo-placeholder { margin-top: 8px; display: flex; align-items: center; gap: 7px; min-height: 52px; padding: 10px 12px; border-radius: 13px; background: #071514; color: #7f9993; font-size: .75rem; }
