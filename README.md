@@ -19,6 +19,7 @@ Principi architetturali:
 - niente servizi/add-on a pagamento attivati automaticamente
 - niente polling o Realtime non necessari
 - Leaflet caricato in lazy loading soltanto all'apertura della mappa
+- inventario attrezzatura caricato dinamicamente soltanto quando viene aperto
 - immagini future compresse nel browser prima dell'upload
 - query e trasferimenti dati mantenuti piccoli e paginati quando necessario
 - cache PWA e cache applicativa per ridurre richieste e banda
@@ -72,6 +73,23 @@ La mappa usa OpenStreetMap/Leaflet e supporta:
 
 La mappa viene caricata dinamicamente solo quando viene aperta, così il bundle iniziale resta più leggero su smartphone e si riduce il traffico.
 
+## Attrezzatura
+
+L'inventario personale è operativo e supporta:
+
+- canne
+- mulinelli
+- fili e trecciati
+- esche e artificiali
+- terminali
+- accessori
+- abbigliamento
+- categoria libera “altro”
+
+Per ogni elemento sono disponibili marca, modello, specifiche e note. Sono supportati creazione, modifica, eliminazione, ricerca e filtri per categoria.
+
+Con account autenticato i dati vengono sincronizzati nella tabella `gear` di Supabase; in modalità ospite restano sul dispositivo. La query cloud è limitata ai 250 elementi più recenti e l'intera sezione viene caricata in lazy loading per contenere traffico e peso iniziale.
+
 ## Avvio locale
 
 ```bash
@@ -102,7 +120,7 @@ Gli indici duplicati non necessari sono stati rimossi per ridurre spazio e scrit
 
 ## Autenticazione
 
-Sono disponibili registrazione/login email-password, sessione persistente, modalità ospite locale, sincronizzazione cloud di catture e spot e logout.
+Sono disponibili registrazione/login email-password, sessione persistente, modalità ospite locale, sincronizzazione cloud di catture, spot e attrezzatura e logout.
 
 ## Deploy Render
 
@@ -125,5 +143,6 @@ Il file `render.yaml` è predisposto per una Static Site XFish. Variabili richie
 3. previsioni meteo-marine e indice pesca ✅
 4. mappa reale con OpenStreetMap/Leaflet ✅
 5. catture geolocalizzate e collegamento diario-mappa ✅
-6. gestione attrezzatura completa
-7. foto catture e spot con compressione client-side
+6. gestione attrezzatura completa ✅
+7. associazione attrezzatura alle catture
+8. foto catture e spot con compressione client-side
