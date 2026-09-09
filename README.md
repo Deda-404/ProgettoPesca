@@ -90,6 +90,14 @@ Per ogni elemento sono disponibili marca, modello, specifiche e note. Sono suppo
 
 Con account autenticato i dati vengono sincronizzati nella tabella `gear` di Supabase; in modalità ospite restano sul dispositivo. La query cloud è limitata ai 250 elementi più recenti e l'intera sezione viene caricata in lazy loading per contenere traffico e peso iniziale.
 
+### Attrezzatura associata alle catture
+
+Ogni cattura può essere collegata a più elementi dell'inventario, per esempio canna, mulinello, trecciato e artificiale. La relazione è molti-a-molti ed è salvata nella tabella `catch_gear`.
+
+La selezione avviene direttamente durante la registrazione della cattura. Nel diario vengono mostrati gli elementi collegati; eliminando un elemento dall'inventario vengono rimosse automaticamente soltanto le associazioni, non la cattura.
+
+Questa struttura permette in seguito statistiche come artificiali più efficaci per specie, combinazioni più usate e rendimento dell'attrezzatura per spot o zona senza duplicare dati nel database.
+
 ## Avvio locale
 
 ```bash
@@ -113,8 +121,11 @@ Lo schema comprende:
 - `fishing_spots`
 - `catches`
 - `gear`
+- `catch_gear`
 
 Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Le catture possono memorizzare anche `latitude`, `longitude`, `location_label` e il riferimento opzionale a `spot_id`.
+
+`catch_gear` usa policy RLS che consentono il collegamento soltanto quando sia la cattura sia l'elemento di attrezzatura appartengono all'utente autenticato.
 
 Gli indici duplicati non necessari sono stati rimossi per ridurre spazio e scritture sul piano gratuito; restano gli indici funzionali alle query reali dell'app.
 
@@ -144,5 +155,6 @@ Il file `render.yaml` è predisposto per una Static Site XFish. Variabili richie
 4. mappa reale con OpenStreetMap/Leaflet ✅
 5. catture geolocalizzate e collegamento diario-mappa ✅
 6. gestione attrezzatura completa ✅
-7. associazione attrezzatura alle catture
+7. associazione attrezzatura alle catture ✅
 8. foto catture e spot con compressione client-side
+9. statistiche personali per specie, spot e attrezzatura
