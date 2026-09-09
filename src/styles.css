@@ -1,0 +1,89 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f4f7f6;
+  background: #081111;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at top, #173333 0, #0a1515 38%, #071010 100%); }
+button { font: inherit; }
+
+.app-shell {
+  width: min(100%, 560px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 20px 16px 104px;
+}
+
+.topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.brand { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.03em; }
+.location { color: #9fb6b2; margin-top: 2px; font-size: .92rem; }
+.avatar { width: 42px; height: 42px; border: 0; border-radius: 50%; background: #dff3ee; color: #12302c; font-weight: 800; }
+
+.hero-card, .section-block {
+  background: rgba(16, 35, 34, .92);
+  border: 1px solid rgba(172, 223, 212, .1);
+  box-shadow: 0 18px 48px rgba(0,0,0,.2);
+  border-radius: 24px;
+}
+
+.hero-card { padding: 22px; overflow: hidden; position: relative; }
+.eyebrow { color: #84cdbb; text-transform: uppercase; letter-spacing: .11em; font-size: .72rem; font-weight: 800; }
+.score-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 8px 0 20px; }
+.score { font-size: 4.2rem; line-height: .95; font-weight: 900; letter-spacing: -0.07em; }
+.score-label { color: #b5c8c4; margin-top: 8px; }
+.fish-orbit { display: grid; place-items: center; width: 92px; height: 92px; border-radius: 50%; color: #0b2823; background: linear-gradient(145deg, #d9c58b, #7dd8c2); }
+.time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.time-grid div { background: #0b1a19; padding: 12px; border-radius: 15px; }
+.time-grid span, .conditions-grid span { display: block; color: #8fa7a3; font-size: .78rem; margin-bottom: 5px; }
+.time-grid strong { font-size: .92rem; }
+
+.days-strip { display: grid; grid-template-columns: repeat(5, minmax(64px, 1fr)); gap: 8px; overflow-x: auto; margin: 14px 0 20px; }
+.day-card { background: #0d1d1c; border-radius: 16px; padding: 12px 8px; text-align: center; border: 1px solid rgba(255,255,255,.04); }
+.day-card span { display: block; color: #8fa7a3; font-size: .78rem; margin-bottom: 6px; }
+.day-card strong { color: #a5decf; }
+
+.section-block { padding: 18px; margin-top: 14px; }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; }
+.section-title-row h2, .advice-card h2 { margin: 0; font-size: 1.05rem; }
+.section-title-row button { border: 0; background: transparent; color: #84cdbb; font-weight: 700; }
+.conditions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.conditions-grid article { padding: 14px; border-radius: 16px; background: #0b1a19; }
+.conditions-grid svg { width: 20px; margin-bottom: 14px; color: #88d5c2; }
+.conditions-grid strong { font-size: .9rem; }
+
+.advice-card { display: flex; gap: 14px; align-items: flex-start; }
+.advice-icon { width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; flex: 0 0 auto; background: #bcdccf; color: #13372f; }
+.advice-card h2 { margin-top: 5px; }
+.advice-card p { color: #9eb4b0; line-height: 1.5; font-size: .9rem; margin: 8px 0 0; }
+
+.bottom-nav {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: min(calc(100% - 24px), 540px);
+  height: 72px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  padding: 8px;
+  background: rgba(8, 18, 18, .96);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 24px;
+  box-shadow: 0 18px 45px rgba(0,0,0,.35);
+  backdrop-filter: blur(18px);
+}
+.bottom-nav button { border: 0; background: transparent; color: #718985; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: .66rem; }
+.bottom-nav button.active { color: #8fd6c5; }
+.bottom-nav svg { width: 20px; height: 20px; }
+.bottom-nav .add-button { width: 48px; height: 48px; justify-self: center; border-radius: 16px; background: #9ed9c9; color: #12352d; justify-content: center; }
+
+@media (max-width: 390px) {
+  .app-shell { padding-left: 12px; padding-right: 12px; }
+  .score { font-size: 3.6rem; }
+  .fish-orbit { width: 78px; height: 78px; }
+  .time-grid { grid-template-columns: 1fr; }
+}
