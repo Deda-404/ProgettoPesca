@@ -5,6 +5,7 @@ import {
   Compass,
   Fish,
   LocateFixed,
+  LogOut,
   MapPinned,
   Moon,
   NotebookTabs,
@@ -15,7 +16,10 @@ import {
   Wind,
   X,
 } from 'lucide-react'
-import { supabaseConfigured } from './lib/supabase'
+import AuthPanel from './components/AuthPanel'
+import { useAuth } from './hooks/useAuth'
+import { createRemoteCatch, loadRemoteCatches } from './lib/catches'
+import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
 
 const days = [
@@ -141,23 +145,25 @@ function MapView({ location, onLocate }) {
   )
 }
 
-function JournalView({ catches, onOpenCatch }) {
+function JournalView({ catches, onOpenCatch, cloudEnabled, syncStatus }) {
   return (
     <>
       <section className="page-intro compact">
         <div>
           <div className="eyebrow">Archivio personale</div>
           <h1>Diario catture</h1>
-          <p>I dati inseriti in questa fase restano salvati sul dispositivo e saranno sincronizzati con Supabase appena il backend sarà collegato.</p>
+          <p>{cloudEnabled ? 'Le catture sono sincronizzate con il tuo account XFish.' : 'Modalità ospite: le catture restano salvate soltanto su questo dispositivo.'}</p>
         </div>
         <button className="primary-button" onClick={onOpenCatch}><Plus size={18} /> Nuova cattura</button>
       </section>
+
+      {syncStatus && <div className="status-banner">{syncStatus}</div>}
 
       {catches.length === 0 ? (
         <section className="section-block empty-state">
           <Fish size={34} />
           <h2>Nessuna cattura registrata</h2>
-          <p>Usa il pulsante “Nuova cattura” per provare il flusso completo.</p>
+          <p>Usa il pulsante “Nuova cattura” per iniziare il tuo diario.</p>
         </section>
       ) : (
         <section className="journal-list">
@@ -187,60 +193,56 @@ function GearView() {
         <div>
           <div className="eyebrow">Inventario personale</div>
           <h1>Attrezzatura</h1>
-          <p>Questa sezione verrà collegata alla tabella <code>gear</code> già prevista nel database.</p>
+          <p>La sezione è predisposta per la tabella <code>gear</code> del database XFish.</p>
         </div>
       </section>
 
       <section className="section-block empty-state">
         <Backpack size={34} />
         <h2>Inventario pronto per il backend</h2>
-        <p>Nella prossima branch aggiungeremo creazione, modifica, foto e associazione dell’attrezzatura alle catture.</p>
+        <p>Qui aggiungeremo creazione, modifica, foto e associazione dell’attrezzatura alle catture.</p>
       </section>
     </>
   )
 }
 
-function ProfileView() {
+function ProfileView({ user, guestMode, onSignOut, onExitGuest }) {
+  const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ospite'
+
   return (
     <>
       <section className="page-intro compact">
         <div>
-          <div className="eyebrow">Configurazione</div>
-          <h1>Profilo e cloud</h1>
-          <p>Stato dei collegamenti principali dell’app.</p>
+          <div className="eyebrow">Account</div>
+          <h1>{displayName}</h1>
+          <p>{user?.email || 'Stai usando XFish senza account.'}</p>
         </div>
       </section>
 
       <section className="section-block connection-list">
         <div className="connection-row">
-          <div>
-            <strong>Supabase</strong>
-            <span>Autenticazione, database e sincronizzazione</span>
-          </div>
-          <span className={supabaseConfigured ? 'status-pill ready' : 'status-pill pending'}>
-            {supabaseConfigured ? 'Configurato' : 'Da collegare'}
-          </span>
+          <div><strong>Supabase</strong><span>Autenticazione, database e sincronizzazione</span></div>
+          <span className={supabaseConfigured ? 'status-pill ready' : 'status-pill pending'}>{supabaseConfigured ? 'Configurato' : 'Da collegare'}</span>
         </div>
         <div className="connection-row">
-          <div>
-            <strong>PWA</strong>
-            <span>Installazione dalla schermata home di Android/desktop</span>
-          </div>
+          <div><strong>Cloud XFish</strong><span>{user ? 'Dati sincronizzati tra i tuoi dispositivi' : 'Disponibile dopo l’accesso'}</span></div>
+          <span className={user ? 'status-pill ready' : 'status-pill pending'}>{user ? 'Attivo' : 'Locale'}</span>
+        </div>
+        <div className="connection-row">
+          <div><strong>PWA</strong><span>Installazione dalla schermata home di Android/desktop</span></div>
           <span className="status-pill ready">Attiva</span>
         </div>
-        <div className="connection-row">
-          <div>
-            <strong>Render</strong>
-            <span>Hosting del branch principale dopo il merge</span>
-          </div>
-          <span className="status-pill ready">Pronto</span>
-        </div>
+      </section>
+
+      <section className="quick-actions">
+        {user && <button className="secondary-button" onClick={onSignOut}><LogOut size={18} /> Esci dall’account</button>}
+        {guestMode && supabaseConfigured && <button className="primary-button" onClick={onExitGuest}>Accedi a XFish</button>}
       </section>
     </>
   )
 }
 
-function CatchModal({ onClose, onSave }) {
+function CatchModal({ onClose, onSave, saving }) {
   const [form, setForm] = useState({
     species: '',
     caughtAt: new Date().toISOString().slice(0, 16),
@@ -254,7 +256,7 @@ function CatchModal({ onClose, onSave }) {
 
   function submit(event) {
     event.preventDefault()
-    if (!form.species.trim()) return
+    if (!form.species.trim() || saving) return
     onSave({ ...form, id: crypto.randomUUID(), species: form.species.trim() })
   }
 
@@ -262,10 +264,7 @@ function CatchModal({ onClose, onSave }) {
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="catch-modal" role="dialog" aria-modal="true" aria-labelledby="catch-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-header">
-          <div>
-            <div className="eyebrow">Diario</div>
-            <h2 id="catch-title">Registra una cattura</h2>
-          </div>
+          <div><div className="eyebrow">Diario XFish</div><h2 id="catch-title">Registra una cattura</h2></div>
           <button className="icon-button" onClick={onClose} aria-label="Chiudi"><X /></button>
         </div>
 
@@ -278,23 +277,64 @@ function CatchModal({ onClose, onSave }) {
             <label>Lunghezza (cm)<input inputMode="decimal" value={form.length} onChange={update('length')} /></label>
           </div>
           <label>Note<textarea rows="3" value={form.notes} onChange={update('notes')} placeholder="Condizioni, recupero, osservazioni…" /></label>
-          <button className="primary-button full-width" type="submit">Salva cattura</button>
+          <button className="primary-button full-width" type="submit" disabled={saving}>{saving ? 'Salvataggio…' : 'Salva cattura'}</button>
         </form>
       </section>
     </div>
   )
 }
 
+function LoadingScreen() {
+  return <div className="auth-screen"><section className="auth-card"><div className="auth-brand-mark"><Fish size={34} /></div><div className="eyebrow">XFish</div><h1>Caricamento…</h1><p className="auth-copy">Sto ripristinando la tua sessione.</p></section></div>
+}
+
 function App() {
+  const { user, loading: authLoading } = useAuth()
+  const [guestMode, setGuestMode] = useState(() => loadLocalState('xfish:guest-mode', false))
   const [activeView, setActiveView] = useState('forecast')
   const [catchModalOpen, setCatchModalOpen] = useState(false)
+  const [savingCatch, setSavingCatch] = useState(false)
   const [location, setLocation] = useState(null)
   const [locationStatus, setLocationStatus] = useState('')
-  const [catches, setCatches] = useState(() => loadLocalState('progetto-pesca:catches', []))
+  const [syncStatus, setSyncStatus] = useState('')
+  const [catches, setCatches] = useState(() => loadLocalState('xfish:catches', loadLocalState('progetto-pesca:catches', [])))
 
-  useEffect(() => saveLocalState('progetto-pesca:catches', catches), [catches])
+  useEffect(() => saveLocalState('xfish:guest-mode', guestMode), [guestMode])
 
-  const activeLabel = useMemo(() => navItems.find((item) => item.id === activeView)?.label || 'Progetto Pesca', [activeView])
+  useEffect(() => {
+    if (user) setGuestMode(false)
+  }, [user])
+
+  useEffect(() => {
+    if (!user) {
+      saveLocalState('xfish:catches', catches)
+      return
+    }
+
+    let cancelled = false
+    setSyncStatus('Sincronizzazione cloud…')
+    loadRemoteCatches(user.id)
+      .then((remote) => {
+        if (cancelled) return
+        setCatches(remote)
+        setSyncStatus('Diario sincronizzato con XFish Cloud.')
+      })
+      .catch(() => {
+        if (!cancelled) setSyncStatus('Non riesco a sincronizzare il diario. Riproveremo più tardi.')
+      })
+
+    return () => { cancelled = true }
+  }, [user])
+
+  useEffect(() => {
+    if (!user) saveLocalState('xfish:catches', catches)
+  }, [catches, user])
+
+  const activeLabel = useMemo(() => navItems.find((item) => item.id === activeView)?.label || 'XFish', [activeView])
+  const initials = useMemo(() => {
+    const source = user?.user_metadata?.display_name || user?.email || 'XF'
+    return source.split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'XF'
+  }, [user])
 
   function locateUser() {
     if (!navigator.geolocation) {
@@ -313,17 +353,40 @@ function App() {
     )
   }
 
-  function saveCatch(item) {
-    setCatches((current) => [item, ...current])
-    setCatchModalOpen(false)
-    setActiveView('journal')
+  async function saveCatch(item) {
+    setSavingCatch(true)
+    setSyncStatus('')
+    try {
+      if (user) {
+        const saved = await createRemoteCatch(user.id, item)
+        setCatches((current) => [saved, ...current])
+        setSyncStatus('Cattura salvata nel cloud.')
+      } else {
+        setCatches((current) => [{ ...item, synced: false }, ...current])
+      }
+      setCatchModalOpen(false)
+      setActiveView('journal')
+    } catch (error) {
+      setSyncStatus(error?.message || 'Impossibile salvare la cattura nel cloud.')
+      setActiveView('journal')
+    } finally {
+      setSavingCatch(false)
+    }
   }
+
+  async function signOut() {
+    if (supabase) await supabase.auth.signOut()
+    setActiveView('forecast')
+  }
+
+  if (supabaseConfigured && authLoading) return <LoadingScreen />
+  if (supabaseConfigured && !user && !guestMode) return <AuthPanel onGuest={() => setGuestMode(true)} />
 
   let view
   if (activeView === 'map') view = <MapView location={location} onLocate={locateUser} />
-  else if (activeView === 'journal') view = <JournalView catches={catches} onOpenCatch={() => setCatchModalOpen(true)} />
+  else if (activeView === 'journal') view = <JournalView catches={catches} onOpenCatch={() => setCatchModalOpen(true)} cloudEnabled={Boolean(user)} syncStatus={syncStatus} />
   else if (activeView === 'gear') view = <GearView />
-  else if (activeView === 'profile') view = <ProfileView />
+  else if (activeView === 'profile') view = <ProfileView user={user} guestMode={!user} onSignOut={signOut} onExitGuest={() => setGuestMode(false)} />
   else view = <ForecastView location={location} locationStatus={locationStatus} onLocate={locateUser} onOpenCatch={() => setCatchModalOpen(true)} />
 
   return (
@@ -331,30 +394,23 @@ function App() {
       <aside className="desktop-sidebar">
         <div className="desktop-brand">
           <div className="brand-mark"><Fish /></div>
-          <div><strong>Progetto Pesca</strong><span>Fishing companion</span></div>
+          <div><strong>XFish</strong><span>Fishing companion</span></div>
         </div>
 
         <nav className="desktop-nav" aria-label="Navigazione principale">
           {navItems.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={activeView === id ? 'active' : ''} onClick={() => setActiveView(id)}>
-              <Icon size={19} /> {label}
-            </button>
+            <button key={id} className={activeView === id ? 'active' : ''} onClick={() => setActiveView(id)}><Icon size={19} /> {label}</button>
           ))}
           <button className={activeView === 'profile' ? 'active' : ''} onClick={() => setActiveView('profile')}><Settings size={19} /> Profilo</button>
         </nav>
 
-        <div className="desktop-sidebar-note">
-          <span className="status-dot" /> Mobile-first · PWA
-        </div>
+        <div className="desktop-sidebar-note"><span className="status-dot" /> Mobile-first · PWA</div>
       </aside>
 
       <div className="app-shell">
         <header className="topbar">
-          <div>
-            <div className="mobile-brand">Progetto Pesca</div>
-            <div className="location">{activeLabel}</div>
-          </div>
-          <button className="avatar" aria-label="Apri profilo" onClick={() => setActiveView('profile')}>AD</button>
+          <div><div className="mobile-brand">XFish</div><div className="location">{activeLabel}</div></div>
+          <button className="avatar" aria-label="Apri profilo" onClick={() => setActiveView('profile')}>{initials}</button>
         </header>
 
         <main>{view}</main>
@@ -368,7 +424,7 @@ function App() {
         </nav>
       </div>
 
-      {catchModalOpen && <CatchModal onClose={() => setCatchModalOpen(false)} onSave={saveCatch} />}
+      {catchModalOpen && <CatchModal onClose={() => setCatchModalOpen(false)} onSave={saveCatch} saving={savingCatch} />}
     </div>
   )
 }
