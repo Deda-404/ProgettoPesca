@@ -9,15 +9,18 @@ import {
   Plus,
   Settings,
   Sun,
+  Trash2,
 } from 'lucide-react'
 import AuthPanel from './components/AuthPanel'
 import CatchEntryModal from './components/CatchEntryModal'
+import CatchPhoto from './components/CatchPhoto'
 import LiveForecastView from './components/LiveForecastView'
 import { DEFAULT_LOCATION, isInItaly, nearestPreset } from './config/locations'
 import { useAuth } from './hooks/useAuth'
 import { useFishingForecast } from './hooks/useFishingForecast'
-import { createRemoteCatch, loadRemoteCatches } from './lib/catches'
+import { createRemoteCatch, deleteRemoteCatch, loadRemoteCatches } from './lib/catches'
 import { createRemoteGear, deleteRemoteGear, loadRemoteGear, updateRemoteGear } from './lib/gear'
+import { deleteLocalCatchPhoto, saveLocalCatchPhoto } from './lib/photos'
 import { createRemoteSpot, deleteRemoteSpot, loadRemoteSpots } from './lib/spots'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
@@ -36,7 +39,7 @@ function gearName(item) {
   return [item?.brand, item?.model].filter(Boolean).join(' ') || item?.category || ''
 }
 
-function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, cloudEnabled, syncStatus }) {
+function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCatch, cloudEnabled, syncStatus }) {
   const spotById = useMemo(() => new Map(spots.map((spot) => [spot.id, spot])), [spots])
   const gearById = useMemo(() => new Map(gear.map((item) => [item.id, item])), [gear])
 
@@ -50,9 +53,7 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, cloudEnable
   }
 
   function catchGear(item) {
-    return (item.gearIds ?? [])
-      .map((id) => gearById.get(id))
-      .filter(Boolean)
+    return (item.gearIds ?? []).map((id) => gearById.get(id)).filter(Boolean)
   }
 
   return (
@@ -61,7 +62,7 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, cloudEnable
         <div>
           <div className="eyebrow">Archivio personale</div>
           <h1>Diario catture</h1>
-          <p>{cloudEnabled ? 'Le catture sono sincronizzate con il tuo account XFish.' : 'Modalità ospite: le catture restano salvate soltanto su questo dispositivo.'}</p>
+          <p>{cloudEnabled ? 'Catture, foto e attrezzatura sono sincronizzate con il tuo account XFish.' : 'Modalità ospite: dati e foto restano soltanto su questo dispositivo.'}</p>
         </div>
         <button className="primary-button" onClick={onOpenCatch}><Plus size={18} /> Nuova cattura</button>
       </section>
@@ -90,17 +91,23 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, cloudEnable
                     <h2>{item.species}</h2>
                     <span>{new Date(item.caughtAt).toLocaleDateString('it-IT')}</span>
                   </div>
+                  <CatchPhoto item={item} />
                   <p>{[item.lure, item.weight ? `${item.weight} kg` : '', item.length ? `${item.length} cm` : ''].filter(Boolean).join(' · ') || 'Nessun dettaglio aggiuntivo'}</p>
                   {location.label && <div className="catch-location-line"><MapPin size={14} /> {location.label}</div>}
                   {visibleGear.length > 0 && (
                     <div className="catch-location-line"><Backpack size={14} /> {visibleGear.join(' · ')}{extraGear ? ` · +${extraGear}` : ''}</div>
                   )}
                   {item.notes && <small>{item.notes}</small>}
-                  {location.hasCoordinates && (
-                    <button type="button" className="catch-map-link" onClick={() => onOpenMap(item)}>
-                      <MapPinned size={15} /> Vedi sulla mappa
+                  <div className="catch-card-actions">
+                    {location.hasCoordinates && (
+                      <button type="button" className="catch-map-link" onClick={() => onOpenMap(item)}>
+                        <MapPinned size={15} /> Vedi sulla mappa
+                      </button>
+                    )}
+                    <button type="button" className="catch-delete-link" onClick={() => onDeleteCatch(item)}>
+                      <Trash2 size={15} /> Elimina
                     </button>
-                  )}
+                  </div>
                 </div>
               </article>
             )
@@ -117,6 +124,7 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, c
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
   ) || item.spotId).length
   const catchesWithGear = catches.filter((item) => (item.gearIds ?? []).length > 0).length
+  const catchesWithPhotos = catches.filter((item) => item.photoPath || item.photoLocalKey || item.photoUrl).length
 
   return (
     <>
@@ -148,6 +156,10 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, c
         <div className="connection-row">
           <div><strong>Attrezzatura</strong><span>{gear.length} elementi · {catchesWithGear} catture collegate</span></div>
           <span className="status-pill ready">Attiva</span>
+        </div>
+        <div className="connection-row">
+          <div><strong>Foto private</strong><span>{catchesWithPhotos} catture con foto · compressione sul dispositivo</span></div>
+          <span className="status-pill ready">≤ 512 KB</span>
         </div>
         <div className="connection-row">
           <div><strong>PWA</strong><span>Installazione dalla schermata home di Android/desktop</span></div>
@@ -203,10 +215,7 @@ function App() {
   }, [user])
 
   useEffect(() => {
-    if (!user) {
-      saveLocalState('xfish:catches', catches)
-      return
-    }
+    if (!user) return undefined
 
     let cancelled = false
     setSyncStatus('Sincronizzazione cloud…')
@@ -214,7 +223,7 @@ function App() {
       .then((remote) => {
         if (cancelled) return
         setCatches(remote)
-        setSyncStatus('Diario sincronizzato con XFish Cloud.')
+        setSyncStatus('Diario e foto sincronizzati con XFish Cloud.')
       })
       .catch(() => {
         if (!cancelled) setSyncStatus('Non riesco a sincronizzare il diario. Riproveremo più tardi.')
@@ -224,14 +233,14 @@ function App() {
   }, [user])
 
   useEffect(() => {
-    if (!user) saveLocalState('xfish:catches', catches)
-  }, [catches, user])
+    if (guestMode && !user) saveLocalState('xfish:catches', catches)
+  }, [catches, guestMode, user])
 
   useEffect(() => {
     if (!user) {
-      setSpots(loadLocalState('xfish:spots', []))
+      if (guestMode) setSpots(loadLocalState('xfish:spots', []))
       setSpotStatus('')
-      return
+      return undefined
     }
 
     let cancelled = false
@@ -247,14 +256,13 @@ function App() {
       })
 
     return () => { cancelled = true }
-  }, [user])
+  }, [user, guestMode])
 
   useEffect(() => {
     if (!user) {
-      const local = loadLocalState('xfish:gear', [])
-      setGear(local)
+      if (guestMode) setGear(loadLocalState('xfish:gear', []))
       setGearStatus('')
-      return
+      return undefined
     }
 
     let cancelled = false
@@ -270,11 +278,11 @@ function App() {
       })
 
     return () => { cancelled = true }
-  }, [user])
+  }, [user, guestMode])
 
   useEffect(() => {
-    if (!user) saveLocalState('xfish:gear', gear)
-  }, [gear, user])
+    if (guestMode && !user) saveLocalState('xfish:gear', gear)
+  }, [gear, guestMode, user])
 
   const activeLabel = useMemo(() => navItems.find((item) => item.id === activeView)?.label || 'XFish', [activeView])
   const initials = useMemo(() => {
@@ -284,12 +292,15 @@ function App() {
 
   const locationLabel = forecastLocation.name || 'Posizione GPS'
 
+  function enterGuestMode() {
+    setCatches(loadLocalState('xfish:catches', loadLocalState('progetto-pesca:catches', [])))
+    setSpots(loadLocalState('xfish:spots', []))
+    setGear(loadLocalState('xfish:gear', []))
+    setGuestMode(true)
+  }
+
   function selectForecastLocation(location) {
-    setForecastLocation({
-      name: location.name,
-      latitude: location.latitude,
-      longitude: location.longitude,
-    })
+    setForecastLocation({ name: location.name, latitude: location.latitude, longitude: location.longitude })
     setLocationStatus(`Previsioni aggiornate su ${location.name}.`)
   }
 
@@ -306,7 +317,6 @@ function App() {
         const nearest = nearestPreset(coordinates)
         const closeToCoreCoast = nearest?.distance < 0.025
         const name = closeToCoreCoast ? `GPS · ${nearest.name}` : 'Posizione GPS'
-
         setForecastLocation({ ...coordinates, name })
         setLocationStatus(
           isInItaly(coordinates)
@@ -326,17 +336,50 @@ function App() {
       if (user) {
         const saved = await createRemoteCatch(user.id, item)
         setCatches((current) => [saved, ...current])
-        setSyncStatus('Cattura e attrezzatura salvate nel cloud.')
+        setSyncStatus(item.photoBlob ? 'Cattura, foto e attrezzatura salvate nel cloud.' : 'Cattura e attrezzatura salvate nel cloud.')
       } else {
-        setCatches((current) => [{ ...item, gearIds: item.gearIds ?? [], synced: false }, ...current])
+        const { photoBlob, ...localItem } = item
+        let photoLocalKey = ''
+        if (photoBlob) {
+          photoLocalKey = await saveLocalCatchPhoto(item.id, photoBlob)
+        }
+        const saved = {
+          ...localItem,
+          gearIds: item.gearIds ?? [],
+          photoLocalKey,
+          photoPath: '',
+          photoUrl: '',
+          synced: false,
+        }
+        setCatches((current) => [saved, ...current])
+        setSyncStatus(photoLocalKey ? 'Cattura e foto salvate su questo dispositivo.' : 'Cattura salvata su questo dispositivo.')
       }
       setCatchModalOpen(false)
       setActiveView('journal')
     } catch (error) {
-      setSyncStatus(error?.message || 'Impossibile salvare la cattura nel cloud.')
+      setSyncStatus(error?.message || 'Impossibile salvare la cattura.')
       setActiveView('journal')
     } finally {
       setSavingCatch(false)
+    }
+  }
+
+  async function deleteCatch(item) {
+    if (!window.confirm(`Eliminare definitivamente la cattura “${item.species}”?`)) return
+
+    setSyncStatus('Eliminazione cattura…')
+    try {
+      if (user) {
+        const result = await deleteRemoteCatch(user.id, item)
+        setCatches((current) => current.filter((candidate) => candidate.id !== item.id))
+        setSyncStatus(result.photoCleanupFailed ? 'Cattura eliminata. La pulizia della foto verrà riprovata in seguito.' : 'Cattura e foto eliminate dal cloud.')
+      } else {
+        if (item.photoLocalKey) await deleteLocalCatchPhoto(item.photoLocalKey)
+        setCatches((current) => current.filter((candidate) => candidate.id !== item.id))
+        setSyncStatus('Cattura eliminata dal dispositivo.')
+      }
+    } catch (error) {
+      setSyncStatus(error?.message || 'Impossibile eliminare la cattura.')
     }
   }
 
@@ -349,12 +392,7 @@ function App() {
         setSpots((current) => [saved, ...current])
         setSpotStatus('Spot salvato nel cloud.')
       } else {
-        const saved = {
-          ...spot,
-          id: crypto.randomUUID(),
-          createdAt: new Date().toISOString(),
-          synced: false,
-        }
+        const saved = { ...spot, id: crypto.randomUUID(), createdAt: new Date().toISOString(), synced: false }
         const next = [saved, ...spots]
         setSpots(next)
         saveLocalState('xfish:spots', next)
@@ -390,13 +428,9 @@ function App() {
   async function saveGear(item) {
     setSavingGear(true)
     setGearStatus('')
-
     try {
       if (user) {
-        const saved = item.id
-          ? await updateRemoteGear(user.id, item)
-          : await createRemoteGear(user.id, item)
-
+        const saved = item.id ? await updateRemoteGear(user.id, item) : await createRemoteGear(user.id, item)
         setGear((current) => item.id
           ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
           : [saved, ...current])
@@ -406,7 +440,6 @@ function App() {
         const saved = item.id
           ? { ...item, updatedAt: now, synced: false }
           : { ...item, id: crypto.randomUUID(), createdAt: now, updatedAt: now, synced: false }
-
         setGear((current) => item.id
           ? current.map((candidate) => candidate.id === item.id ? saved : candidate)
           : [saved, ...current])
@@ -452,11 +485,15 @@ function App() {
 
   async function signOut() {
     if (supabase) await supabase.auth.signOut()
+    setGuestMode(false)
+    setCatches([])
+    setSpots([])
+    setGear([])
     setActiveView('forecast')
   }
 
   if (supabaseConfigured && authLoading) return <LoadingScreen />
-  if (supabaseConfigured && !user && !guestMode) return <AuthPanel onGuest={() => setGuestMode(true)} />
+  if (supabaseConfigured && !user && !guestMode) return <AuthPanel onGuest={enterGuestMode} />
 
   let view
   if (activeView === 'map') {
@@ -484,6 +521,7 @@ function App() {
         gear={gear}
         onOpenCatch={() => setCatchModalOpen(true)}
         onOpenMap={openCatchOnMap}
+        onDeleteCatch={deleteCatch}
         cloudEnabled={Boolean(user)}
         syncStatus={syncStatus}
       />
@@ -505,7 +543,7 @@ function App() {
     view = (
       <ProfileView
         user={user}
-        guestMode={!user}
+        guestMode={guestMode}
         onSignOut={signOut}
         onExitGuest={() => setGuestMode(false)}
         locationLabel={locationLabel}
