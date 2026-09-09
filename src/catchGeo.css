@@ -1,0 +1,4 @@
+.catch-location-line { display: flex; align-items: center; gap: 6px; margin-top: 7px; color: #a8c9c1; font-size: .76rem; }
+.catch-location-line svg { flex: 0 0 auto; color: #78c6b4; }
+.catch-map-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 9px; padding: 7px 9px; min-height: 34px; border-radius: 10px; border: 1px solid rgba(159,220,205,.12); background: #0d211f; color: #9fd9cc; font-size: .73rem; font-weight: 750; }
+.catch-map-link:hover { background: #102825; }
