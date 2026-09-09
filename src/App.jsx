@@ -17,11 +17,13 @@ import { DEFAULT_LOCATION, isInItaly, nearestPreset } from './config/locations'
 import { useAuth } from './hooks/useAuth'
 import { useFishingForecast } from './hooks/useFishingForecast'
 import { createRemoteCatch, loadRemoteCatches } from './lib/catches'
+import { createRemoteGear, deleteRemoteGear, loadRemoteGear, updateRemoteGear } from './lib/gear'
 import { createRemoteSpot, deleteRemoteSpot, loadRemoteSpots } from './lib/spots'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
 
 const SpotMapView = lazy(() => import('./components/SpotMapView'))
+const GearInventoryView = lazy(() => import('./components/GearInventoryView'))
 
 const navItems = [
   { id: 'forecast', label: 'Previsioni', icon: Sun },
@@ -91,27 +93,7 @@ function JournalView({ catches, spots, onOpenCatch, onOpenMap, cloudEnabled, syn
   )
 }
 
-function GearView() {
-  return (
-    <>
-      <section className="page-intro compact">
-        <div>
-          <div className="eyebrow">Inventario personale</div>
-          <h1>Attrezzatura</h1>
-          <p>La sezione è predisposta per la tabella <code>gear</code> del database XFish.</p>
-        </div>
-      </section>
-
-      <section className="section-block empty-state">
-        <Backpack size={34} />
-        <h2>Inventario pronto per il backend</h2>
-        <p>Qui aggiungeremo creazione, modifica, foto e associazione dell’attrezzatura alle catture.</p>
-      </section>
-    </>
-  )
-}
-
-function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, catches, spots }) {
+function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, catches, spots, gear }) {
   const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ospite'
   const geolocatedCatches = catches.filter((item) => (
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
@@ -145,6 +127,10 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, c
           <span className="status-pill ready">Attiva</span>
         </div>
         <div className="connection-row">
+          <div><strong>Attrezzatura</strong><span>{gear.length} elementi nell’inventario</span></div>
+          <span className="status-pill ready">Attiva</span>
+        </div>
+        <div className="connection-row">
           <div><strong>PWA</strong><span>Installazione dalla schermata home di Android/desktop</span></div>
           <span className="status-pill ready">Attiva</span>
         </div>
@@ -162,12 +148,12 @@ function LoadingScreen() {
   return <div className="auth-screen"><section className="auth-card"><div className="auth-brand-mark"><Fish size={34} /></div><div className="eyebrow">XFish</div><h1>Caricamento…</h1><p className="auth-copy">Sto ripristinando la tua sessione.</p></section></div>
 }
 
-function MapLoadingScreen() {
+function SectionLoadingScreen({ icon: Icon, title, text }) {
   return (
     <section className="section-block forecast-loading">
-      <MapPinned size={32} />
-      <strong>Carico la mappa…</strong>
-      <span>Leaflet viene scaricato solo quando apri questa sezione, per ridurre traffico e tempi di avvio.</span>
+      <Icon size={32} />
+      <strong>{title}</strong>
+      <span>{text}</span>
     </section>
   )
 }
@@ -179,12 +165,15 @@ function App() {
   const [catchModalOpen, setCatchModalOpen] = useState(false)
   const [savingCatch, setSavingCatch] = useState(false)
   const [savingSpot, setSavingSpot] = useState(false)
+  const [savingGear, setSavingGear] = useState(false)
   const [locationStatus, setLocationStatus] = useState('')
   const [syncStatus, setSyncStatus] = useState('')
   const [spotStatus, setSpotStatus] = useState('')
+  const [gearStatus, setGearStatus] = useState('')
   const [forecastLocation, setForecastLocation] = useState(() => loadLocalState('xfish:forecast-location', DEFAULT_LOCATION))
   const [catches, setCatches] = useState(() => loadLocalState('xfish:catches', loadLocalState('progetto-pesca:catches', [])))
   const [spots, setSpots] = useState(() => loadLocalState('xfish:spots', []))
+  const [gear, setGear] = useState(() => loadLocalState('xfish:gear', []))
   const { data: forecast, loading: forecastLoading, error: forecastError } = useFishingForecast(forecastLocation)
 
   useEffect(() => saveLocalState('xfish:guest-mode', guestMode), [guestMode])
@@ -240,6 +229,33 @@ function App() {
 
     return () => { cancelled = true }
   }, [user])
+
+  useEffect(() => {
+    if (!user) {
+      const local = loadLocalState('xfish:gear', [])
+      setGear(local)
+      setGearStatus('')
+      return
+    }
+
+    let cancelled = false
+    setGearStatus('Sincronizzazione attrezzatura…')
+    loadRemoteGear(user.id)
+      .then((remote) => {
+        if (cancelled) return
+        setGear(remote)
+        setGearStatus('Attrezzatura sincronizzata con XFish Cloud.')
+      })
+      .catch(() => {
+        if (!cancelled) setGearStatus('Non riesco a sincronizzare l’attrezzatura. Riprova più tardi.')
+      })
+
+    return () => { cancelled = true }
+  }, [user])
+
+  useEffect(() => {
+    if (!user) saveLocalState('xfish:gear', gear)
+  }, [gear, user])
 
   const activeLabel = useMemo(() => navItems.find((item) => item.id === activeView)?.label || 'XFish', [activeView])
   const initials = useMemo(() => {
@@ -352,6 +368,51 @@ function App() {
     }
   }
 
+  async function saveGear(item) {
+    setSavingGear(true)
+    setGearStatus('')
+
+    try {
+      if (user) {
+        const saved = item.id
+          ? await updateRemoteGear(user.id, item)
+          : await createRemoteGear(user.id, item)
+
+        setGear((current) => item.id
+          ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+          : [saved, ...current])
+        setGearStatus(item.id ? 'Attrezzatura aggiornata nel cloud.' : 'Attrezzatura salvata nel cloud.')
+      } else {
+        const now = new Date().toISOString()
+        const saved = item.id
+          ? { ...item, updatedAt: now, synced: false }
+          : { ...item, id: crypto.randomUUID(), createdAt: now, updatedAt: now, synced: false }
+
+        setGear((current) => item.id
+          ? current.map((candidate) => candidate.id === item.id ? saved : candidate)
+          : [saved, ...current])
+        setGearStatus(item.id ? 'Attrezzatura aggiornata sul dispositivo.' : 'Attrezzatura salvata sul dispositivo.')
+      }
+      return true
+    } catch (error) {
+      setGearStatus(error?.message || 'Impossibile salvare l’attrezzatura.')
+      return false
+    } finally {
+      setSavingGear(false)
+    }
+  }
+
+  async function deleteGear(item) {
+    setGearStatus('')
+    try {
+      if (user) await deleteRemoteGear(user.id, item.id)
+      setGear((current) => current.filter((candidate) => candidate.id !== item.id))
+      setGearStatus(user ? 'Elemento eliminato dal cloud.' : 'Elemento eliminato dal dispositivo.')
+    } catch (error) {
+      setGearStatus(error?.message || 'Impossibile eliminare l’attrezzatura.')
+    }
+  }
+
   function openCatchOnMap(item) {
     const spot = item.spotId ? spots.find((candidate) => candidate.id === item.spotId) : null
     const latitude = Number.isFinite(Number(item.latitude)) ? Number(item.latitude) : Number(spot?.latitude)
@@ -377,7 +438,7 @@ function App() {
   let view
   if (activeView === 'map') {
     view = (
-      <Suspense fallback={<MapLoadingScreen />}>
+      <Suspense fallback={<SectionLoadingScreen icon={MapPinned} title="Carico la mappa…" text="Leaflet viene scaricato solo quando apri questa sezione, per ridurre traffico e tempi di avvio." />}>
         <SpotMapView
           location={forecastLocation}
           locationLabel={locationLabel}
@@ -404,7 +465,18 @@ function App() {
       />
     )
   } else if (activeView === 'gear') {
-    view = <GearView />
+    view = (
+      <Suspense fallback={<SectionLoadingScreen icon={Backpack} title="Carico l’inventario…" text="La sezione attrezzatura viene caricata soltanto quando serve." />}>
+        <GearInventoryView
+          gear={gear}
+          cloudEnabled={Boolean(user)}
+          status={gearStatus}
+          saving={savingGear}
+          onSave={saveGear}
+          onDelete={deleteGear}
+        />
+      </Suspense>
+    )
   } else if (activeView === 'profile') {
     view = (
       <ProfileView
@@ -415,6 +487,7 @@ function App() {
         locationLabel={locationLabel}
         catches={catches}
         spots={spots}
+        gear={gear}
       />
     )
   } else {
