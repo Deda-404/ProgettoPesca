@@ -20,7 +20,8 @@ Principi architetturali:
 - niente polling o Realtime non necessari
 - Leaflet caricato in lazy loading soltanto all'apertura della mappa
 - inventario attrezzatura caricato dinamicamente soltanto quando viene aperto
-- immagini future compresse nel browser prima dell'upload
+- foto compresse direttamente nel browser prima dell'upload
+- bucket foto privato, limite server-side di 512 KB per file
 - query e trasferimenti dati mantenuti piccoli e paginati quando necessario
 - cache PWA e cache applicativa per ridurre richieste e banda
 
@@ -75,28 +76,31 @@ La mappa viene caricata dinamicamente solo quando viene aperta, così il bundle 
 
 ## Attrezzatura
 
-L'inventario personale è operativo e supporta:
+L'inventario personale supporta canne, mulinelli, fili/trecciati, esche e artificiali, terminali, accessori, abbigliamento e categoria libera “altro”. Per ogni elemento sono disponibili marca, modello, specifiche e note, oltre a creazione, modifica, eliminazione, ricerca e filtri.
 
-- canne
-- mulinelli
-- fili e trecciati
-- esche e artificiali
-- terminali
-- accessori
-- abbigliamento
-- categoria libera “altro”
-
-Per ogni elemento sono disponibili marca, modello, specifiche e note. Sono supportati creazione, modifica, eliminazione, ricerca e filtri per categoria.
-
-Con account autenticato i dati vengono sincronizzati nella tabella `gear` di Supabase; in modalità ospite restano sul dispositivo. La query cloud è limitata ai 250 elementi più recenti e l'intera sezione viene caricata in lazy loading per contenere traffico e peso iniziale.
+Con account autenticato i dati vengono sincronizzati nella tabella `gear` di Supabase; in modalità ospite restano sul dispositivo. La query cloud è limitata ai 250 elementi più recenti e la sezione viene caricata in lazy loading.
 
 ### Attrezzatura associata alle catture
 
-Ogni cattura può essere collegata a più elementi dell'inventario, per esempio canna, mulinello, trecciato e artificiale. La relazione è molti-a-molti ed è salvata nella tabella `catch_gear`.
+Ogni cattura può essere collegata a più elementi dell'inventario, per esempio canna, mulinello, trecciato e artificiale. La relazione molti-a-molti è salvata nella tabella `catch_gear` e permette future statistiche per specie, spot e attrezzatura senza duplicare dati.
 
-La selezione avviene direttamente durante la registrazione della cattura. Nel diario vengono mostrati gli elementi collegati; eliminando un elemento dall'inventario vengono rimosse automaticamente soltanto le associazioni, non la cattura.
+## Foto delle catture
 
-Questa struttura permette in seguito statistiche come artificiali più efficaci per specie, combinazioni più usate e rendimento dell'attrezzatura per spot o zona senza duplicare dati nel database.
+Le foto sono progettate specificamente per il piano gratuito Supabase:
+
+- una foto facoltativa per cattura
+- compressione e ridimensionamento direttamente sul telefono/PC prima dell'upload
+- obiettivo circa 360 KB, limite massimo XFish 512 KB
+- WebP quando supportato, con fallback JPEG
+- bucket Supabase `catch-photos` privato
+- percorso isolato per utente: `<user-id>/<catch-id>.<ext>`
+- accesso alle immagini cloud tramite URL firmate temporanee
+- RLS su lettura, upload ed eliminazione
+- eliminazione della foto quando viene eliminata la cattura
+- modalità ospite: Blob conservato in IndexedDB, senza riempire `localStorage`
+- nessuna Image Transformation o funzione server a pagamento
+
+Questa scelta riduce sia occupazione Storage sia egress e mantiene le foto non pubbliche.
 
 ## Avvio locale
 
@@ -115,7 +119,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=...
 
 ## Database Supabase
 
-Lo schema comprende:
+Lo schema applicativo comprende:
 
 - `profiles`
 - `fishing_spots`
@@ -123,15 +127,13 @@ Lo schema comprende:
 - `gear`
 - `catch_gear`
 
-Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Le catture possono memorizzare anche `latitude`, `longitude`, `location_label` e il riferimento opzionale a `spot_id`.
+Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Le catture possono memorizzare coordinate, località, spot, attrezzatura e il percorso privato della foto.
 
-`catch_gear` usa policy RLS che consentono il collegamento soltanto quando sia la cattura sia l'elemento di attrezzatura appartengono all'utente autenticato.
-
-Gli indici duplicati non necessari sono stati rimossi per ridurre spazio e scritture sul piano gratuito; restano gli indici funzionali alle query reali dell'app.
+Lo Storage usa il bucket privato `catch-photos` con policy che limitano ogni utente alla propria cartella. Gli indici duplicati non necessari sono stati rimossi; restano quelli utili alle query reali e alle future statistiche.
 
 ## Autenticazione
 
-Sono disponibili registrazione/login email-password, sessione persistente, modalità ospite locale, sincronizzazione cloud di catture, spot e attrezzatura e logout.
+Sono disponibili registrazione/login email-password, sessione persistente, modalità ospite locale, sincronizzazione cloud e logout. Il client gestisce redirect e reinvio della conferma email; prima di un'apertura pubblica resta da configurare un SMTP adatto e i Site/Redirect URL definitivi in Supabase.
 
 ## Deploy Render
 
@@ -156,5 +158,6 @@ Il file `render.yaml` è predisposto per una Static Site XFish. Variabili richie
 5. catture geolocalizzate e collegamento diario-mappa ✅
 6. gestione attrezzatura completa ✅
 7. associazione attrezzatura alle catture ✅
-8. foto catture e spot con compressione client-side
-9. statistiche personali per specie, spot e attrezzatura
+8. foto private delle catture con compressione client-side ✅
+9. foto degli spot con la stessa pipeline ottimizzata
+10. statistiche personali per specie, spot e attrezzatura
