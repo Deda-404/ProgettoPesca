@@ -98,6 +98,8 @@ Lo schema comprende:
 
 Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Le catture possono memorizzare anche `latitude`, `longitude`, `location_label` e il riferimento opzionale a `spot_id`.
 
+Gli indici duplicati non necessari sono stati rimossi per ridurre spazio e scritture sul piano gratuito; restano gli indici funzionali alle query reali dell'app.
+
 ## Autenticazione
 
 Sono disponibili registrazione/login email-password, sessione persistente, modalità ospite locale, sincronizzazione cloud di catture e spot e logout.
@@ -122,6 +124,6 @@ Il file `render.yaml` è predisposto per una Static Site XFish. Variabili richie
 2. autenticazione e sincronizzazione Supabase ✅
 3. previsioni meteo-marine e indice pesca ✅
 4. mappa reale con OpenStreetMap/Leaflet ✅
-5. catture geolocalizzate e collegamento diario-mappa 🚧
+5. catture geolocalizzate e collegamento diario-mappa ✅
 6. gestione attrezzatura completa
 7. foto catture e spot con compressione client-side
