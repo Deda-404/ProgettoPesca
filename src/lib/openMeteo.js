@@ -47,10 +47,12 @@ const MARINE_CURRENT = [
   'sea_surface_temperature',
   'ocean_current_velocity',
   'ocean_current_direction',
-  'sea_level_height_msl',
 ]
 
-const MARINE_HOURLY = [...MARINE_CURRENT]
+const MARINE_HOURLY = [
+  ...MARINE_CURRENT,
+  'sea_level_height_msl',
+]
 
 const MARINE_DAILY = [
   'wave_height_max',
@@ -98,6 +100,8 @@ export async function fetchFishingConditions({ latitude, longitude }, { signal }
     ...common,
     current: MARINE_CURRENT,
     hourly: MARINE_HOURLY,
+    minutely_15: ['sea_level_height_msl'],
+    forecast_minutely_15: 192,
     daily: MARINE_DAILY,
     cell_selection: 'sea',
   })
@@ -125,7 +129,8 @@ export function weatherCodeLabel(code) {
 }
 
 export function compassDirection(degrees) {
-  if (!Number.isFinite(degrees)) return '—'
+  const value = Number(degrees)
+  if (!Number.isFinite(value)) return '—'
   const points = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO']
-  return points[Math.round((((degrees % 360) + 360) % 360) / 45) % 8]
+  return points[Math.round((((value % 360) + 360) % 360) / 45) % 8]
 }
