@@ -3,14 +3,76 @@ import { Fish, LockKeyhole, Mail, UserRound } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import '../auth.css'
 
+function confirmationRedirectUrl() {
+  if (typeof window === 'undefined') return undefined
+  return `${window.location.origin}/`
+}
+
+function initialAuthError() {
+  if (typeof window === 'undefined') return ''
+
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const query = new URLSearchParams(window.location.search)
+  const description = hash.get('error_description') || query.get('error_description')
+
+  return description ? `Verifica email non completata: ${description.replaceAll('+', ' ')}` : ''
+}
+
+function friendlyAuthError(error) {
+  const message = error?.message || 'Operazione non riuscita. Riprova.'
+  const normalized = message.toLowerCase()
+
+  if (normalized.includes('email not confirmed')) {
+    return 'La tua email non è ancora verificata. Puoi reinviare il messaggio di conferma qui sotto.'
+  }
+
+  if (normalized.includes('email address not authorized')) {
+    return 'L’invio della mail di verifica non è disponibile per questo indirizzo nella configurazione email attuale.'
+  }
+
+  if (normalized.includes('rate limit')) {
+    return 'Sono state richieste troppe email in poco tempo. Attendi circa un minuto e riprova.'
+  }
+
+  return message
+}
+
 export default function AuthPanel({ onGuest }) {
   const [mode, setMode] = useState('login')
   const [form, setForm] = useState({ displayName: '', email: '', password: '' })
   const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [verificationPending, setVerificationPending] = useState(false)
   const [message, setMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState(initialAuthError)
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
+
+  async function resendVerification() {
+    const email = form.email.trim()
+    if (!supabase || !email || resending) return
+
+    setResending(true)
+    setMessage('')
+    setErrorMessage('')
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: confirmationRedirectUrl(),
+        },
+      })
+      if (error) throw error
+      setVerificationPending(true)
+      setMessage('Nuova mail inviata. Usa l’ultimo messaggio ricevuto: i link precedenti possono non essere più validi.')
+    } catch (error) {
+      setErrorMessage(friendlyAuthError(error))
+    } finally {
+      setResending(false)
+    }
+  }
 
   async function submit(event) {
     event.preventDefault()
@@ -27,11 +89,17 @@ export default function AuthPanel({ onGuest }) {
           password: form.password,
           options: {
             data: { display_name: form.displayName.trim() || form.email.split('@')[0] },
+            emailRedirectTo: confirmationRedirectUrl(),
           },
         })
         if (error) throw error
+
         if (!data.session) {
-          setMessage('Account creato. Controlla la tua email per confermare la registrazione.')
+          setVerificationPending(true)
+          setMessage('Account creato. Ti abbiamo inviato una mail: aprila e conferma l’indirizzo per attivare l’accesso.')
+        } else {
+          setVerificationPending(false)
+          setMessage('Account creato e accesso eseguito.')
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -39,12 +107,24 @@ export default function AuthPanel({ onGuest }) {
           password: form.password,
         })
         if (error) throw error
+        setVerificationPending(false)
       }
     } catch (error) {
-      setErrorMessage(error?.message || 'Operazione non riuscita. Riprova.')
+      const friendly = friendlyAuthError(error)
+      if ((error?.message || '').toLowerCase().includes('email not confirmed')) {
+        setVerificationPending(true)
+      }
+      setErrorMessage(friendly)
     } finally {
       setLoading(false)
     }
+  }
+
+  function switchMode(nextMode) {
+    setMode(nextMode)
+    setMessage('')
+    setErrorMessage('')
+    setVerificationPending(false)
   }
 
   return (
@@ -58,8 +138,8 @@ export default function AuthPanel({ onGuest }) {
         </p>
 
         <div className="auth-tabs" role="tablist" aria-label="Accesso o registrazione">
-          <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')} type="button">Accedi</button>
-          <button className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')} type="button">Registrati</button>
+          <button className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')} type="button">Accedi</button>
+          <button className={mode === 'register' ? 'active' : ''} onClick={() => switchMode('register')} type="button">Registrati</button>
         </div>
 
         <form className="auth-form" onSubmit={submit}>
@@ -86,6 +166,12 @@ export default function AuthPanel({ onGuest }) {
           <button className="primary-button full-width auth-submit" type="submit" disabled={loading}>
             {loading ? 'Attendi…' : mode === 'login' ? 'Accedi' : 'Crea account'}
           </button>
+
+          {verificationPending && (
+            <button className="secondary-button full-width" type="button" onClick={resendVerification} disabled={resending || !form.email.trim()}>
+              {resending ? 'Invio…' : 'Reinvia mail di verifica'}
+            </button>
+          )}
         </form>
 
         <div className="auth-divider"><span>oppure</span></div>
