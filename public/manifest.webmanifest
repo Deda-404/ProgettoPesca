@@ -1,6 +1,6 @@
 {
-  "name": "Progetto Pesca",
-  "short_name": "Pesca",
+  "name": "XFish",
+  "short_name": "XFish",
   "description": "Previsioni di pesca, spot personali, diario catture e attrezzatura.",
   "start_url": "/",
   "display": "standalone",

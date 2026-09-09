@@ -1,4 +1,4 @@
-const CACHE_NAME = 'progetto-pesca-v1'
+const CACHE_NAME = 'xfish-v1'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/app-icon.svg']
 
 self.addEventListener('install', (event) => {
