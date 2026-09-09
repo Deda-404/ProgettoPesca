@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Backpack,
   Fish,
-  LocateFixed,
   LogOut,
   MapPinned,
   NotebookTabs,
@@ -13,10 +12,12 @@ import {
 } from 'lucide-react'
 import AuthPanel from './components/AuthPanel'
 import LiveForecastView from './components/LiveForecastView'
+import SpotMapView from './components/SpotMapView'
 import { DEFAULT_LOCATION, isInItaly, nearestPreset } from './config/locations'
 import { useAuth } from './hooks/useAuth'
 import { useFishingForecast } from './hooks/useFishingForecast'
 import { createRemoteCatch, loadRemoteCatches } from './lib/catches'
+import { createRemoteSpot, deleteRemoteSpot, loadRemoteSpots } from './lib/spots'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
 
@@ -26,30 +27,6 @@ const navItems = [
   { id: 'journal', label: 'Diario', icon: NotebookTabs },
   { id: 'gear', label: 'Attrezzatura', icon: Backpack },
 ]
-
-function MapView({ location, locationLabel, onLocate }) {
-  return (
-    <>
-      <section className="page-intro compact">
-        <div>
-          <div className="eyebrow">Spot personali</div>
-          <h1>Mappa</h1>
-          <p>La posizione meteo-mare attiva è {locationLabel}. Nel prossimo blocco questa schermata diventerà una mappa reale con spot e catture.</p>
-        </div>
-        <button className="secondary-button" onClick={onLocate}><LocateFixed size={18} /> Localizzami</button>
-      </section>
-
-      <section className="map-placeholder section-block">
-        <div className="map-grid" aria-hidden="true" />
-        <div className="map-pin"><MapPinned size={34} /></div>
-        <div className="map-copy">
-          <strong>{locationLabel}</strong>
-          <span>{location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}</span>
-        </div>
-      </section>
-    </>
-  )
-}
 
 function JournalView({ catches, onOpenCatch, cloudEnabled, syncStatus }) {
   return (
@@ -139,6 +116,10 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel })
           <span className="status-pill ready">{locationLabel}</span>
         </div>
         <div className="connection-row">
+          <div><strong>Mappa spot</strong><span>OpenStreetMap · spot privati sincronizzati</span></div>
+          <span className="status-pill ready">Attiva</span>
+        </div>
+        <div className="connection-row">
           <div><strong>PWA</strong><span>Installazione dalla schermata home di Android/desktop</span></div>
           <span className="status-pill ready">Attiva</span>
         </div>
@@ -204,10 +185,13 @@ function App() {
   const [activeView, setActiveView] = useState('forecast')
   const [catchModalOpen, setCatchModalOpen] = useState(false)
   const [savingCatch, setSavingCatch] = useState(false)
+  const [savingSpot, setSavingSpot] = useState(false)
   const [locationStatus, setLocationStatus] = useState('')
   const [syncStatus, setSyncStatus] = useState('')
+  const [spotStatus, setSpotStatus] = useState('')
   const [forecastLocation, setForecastLocation] = useState(() => loadLocalState('xfish:forecast-location', DEFAULT_LOCATION))
   const [catches, setCatches] = useState(() => loadLocalState('xfish:catches', loadLocalState('progetto-pesca:catches', [])))
+  const [spots, setSpots] = useState(() => loadLocalState('xfish:spots', []))
   const { data: forecast, loading: forecastLoading, error: forecastError } = useFishingForecast(forecastLocation)
 
   useEffect(() => saveLocalState('xfish:guest-mode', guestMode), [guestMode])
@@ -241,6 +225,28 @@ function App() {
   useEffect(() => {
     if (!user) saveLocalState('xfish:catches', catches)
   }, [catches, user])
+
+  useEffect(() => {
+    if (!user) {
+      setSpots(loadLocalState('xfish:spots', []))
+      setSpotStatus('')
+      return
+    }
+
+    let cancelled = false
+    setSpotStatus('Sincronizzazione spot…')
+    loadRemoteSpots(user.id)
+      .then((remote) => {
+        if (cancelled) return
+        setSpots(remote)
+        setSpotStatus('Spot sincronizzati con XFish Cloud.')
+      })
+      .catch(() => {
+        if (!cancelled) setSpotStatus('Non riesco a sincronizzare gli spot. Riprova più tardi.')
+      })
+
+    return () => { cancelled = true }
+  }, [user])
 
   const activeLabel = useMemo(() => navItems.find((item) => item.id === activeView)?.label || 'XFish', [activeView])
   const initials = useMemo(() => {
@@ -306,6 +312,53 @@ function App() {
     }
   }
 
+  async function saveSpot(spot) {
+    setSavingSpot(true)
+    setSpotStatus('')
+    try {
+      if (user) {
+        const saved = await createRemoteSpot(user.id, spot)
+        setSpots((current) => [saved, ...current])
+        setSpotStatus('Spot salvato nel cloud.')
+      } else {
+        const saved = {
+          ...spot,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          synced: false,
+        }
+        const next = [saved, ...spots]
+        setSpots(next)
+        saveLocalState('xfish:spots', next)
+        setSpotStatus('Spot salvato su questo dispositivo.')
+      }
+      return true
+    } catch (error) {
+      setSpotStatus(error?.message || 'Impossibile salvare lo spot.')
+      return false
+    } finally {
+      setSavingSpot(false)
+    }
+  }
+
+  async function deleteSpot(spot) {
+    setSpotStatus('')
+    try {
+      if (user) {
+        await deleteRemoteSpot(user.id, spot.id)
+        setSpots((current) => current.filter((item) => item.id !== spot.id))
+        setSpotStatus('Spot eliminato dal cloud.')
+      } else {
+        const next = spots.filter((item) => item.id !== spot.id)
+        setSpots(next)
+        saveLocalState('xfish:spots', next)
+        setSpotStatus('Spot eliminato dal dispositivo.')
+      }
+    } catch (error) {
+      setSpotStatus(error?.message || 'Impossibile eliminare lo spot.')
+    }
+  }
+
   async function signOut() {
     if (supabase) await supabase.auth.signOut()
     setActiveView('forecast')
@@ -316,7 +369,19 @@ function App() {
 
   let view
   if (activeView === 'map') {
-    view = <MapView location={forecastLocation} locationLabel={locationLabel} onLocate={locateUser} />
+    view = (
+      <SpotMapView
+        location={forecastLocation}
+        locationLabel={locationLabel}
+        spots={spots}
+        onLocate={locateUser}
+        onSaveSpot={saveSpot}
+        onDeleteSpot={deleteSpot}
+        saving={savingSpot}
+        status={spotStatus || locationStatus}
+        cloudEnabled={Boolean(user)}
+      />
+    )
   } else if (activeView === 'journal') {
     view = <JournalView catches={catches} onOpenCatch={() => setCatchModalOpen(true)} cloudEnabled={Boolean(user)} syncStatus={syncStatus} />
   } else if (activeView === 'gear') {
