@@ -88,20 +88,34 @@ export async function createRemoteSpot(userId, spot) {
   }
 }
 
-export async function deleteRemoteSpot(userId, spot) {
+export async function deleteRemoteSpot(userId, spotOrId) {
   if (!supabase || !userId) throw new Error('Cloud XFish non disponibile.')
+
+  const spotId = typeof spotOrId === 'string' ? spotOrId : spotOrId?.id
+  if (!spotId) throw new Error('Spot non valido.')
+
+  let photoPath = typeof spotOrId === 'object' ? (spotOrId.photoPath || '') : ''
+  if (!photoPath) {
+    const { data } = await supabase
+      .from('fishing_spots')
+      .select('photo_path')
+      .eq('id', spotId)
+      .eq('user_id', userId)
+      .maybeSingle()
+    photoPath = data?.photo_path || ''
+  }
 
   const { error } = await supabase
     .from('fishing_spots')
     .delete()
-    .eq('id', spot.id)
+    .eq('id', spotId)
     .eq('user_id', userId)
 
   if (error) throw error
 
   let photoCleanupFailed = false
-  if (spot.photoPath) {
-    try { await removeSpotPhoto(spot.photoPath) } catch { photoCleanupFailed = true }
+  if (photoPath) {
+    try { await removeSpotPhoto(photoPath) } catch { photoCleanupFailed = true }
   }
   return { photoCleanupFailed }
 }
