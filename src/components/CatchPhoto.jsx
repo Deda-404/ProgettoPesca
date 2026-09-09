@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Image as ImageIcon } from 'lucide-react'
 import { loadLocalCatchPhoto } from '../lib/photos'
+import './CatchPhoto.css'
 
 export default function CatchPhoto({ item }) {
   const [localUrl, setLocalUrl] = useState('')
