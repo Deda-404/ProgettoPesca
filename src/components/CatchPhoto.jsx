@@ -10,6 +10,7 @@ export default function CatchPhoto({ item }) {
   useEffect(() => {
     let active = true
     let objectUrl = ''
+    setFailed(false)
 
     if (!item?.photoLocalKey || item?.photoUrl) {
       setLocalUrl('')
@@ -18,7 +19,10 @@ export default function CatchPhoto({ item }) {
 
     loadLocalCatchPhoto(item.photoLocalKey)
       .then((blob) => {
-        if (!active || !blob) return
+        if (!active || !blob) {
+          if (active) setFailed(true)
+          return
+        }
         objectUrl = URL.createObjectURL(blob)
         setLocalUrl(objectUrl)
       })
@@ -33,11 +37,10 @@ export default function CatchPhoto({ item }) {
   }, [item?.photoLocalKey, item?.photoUrl])
 
   const src = item?.photoUrl || localUrl
-  if (!src) {
-    return failed || item?.photoPath ? (
-      <div className="catch-photo-placeholder"><ImageIcon size={18} /> Foto non disponibile</div>
-    ) : null
+  if (failed || (!src && item?.photoPath)) {
+    return <div className="catch-photo-placeholder"><ImageIcon size={18} /> Foto non disponibile</div>
   }
+  if (!src) return null
 
   return (
     <div className="catch-photo-wrap">
