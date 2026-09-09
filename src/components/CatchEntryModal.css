@@ -1,5 +1,5 @@
 .catch-entry-modal { max-height: min(92vh, 860px); overflow-y: auto; }
-.catch-location-panel, .catch-gear-panel { display: grid; gap: 12px; padding: 13px; border-radius: 16px; background: #0a1a18; border: 1px solid rgba(188,226,216,.09); }
+.catch-location-panel, .catch-gear-panel, .catch-photo-panel { display: grid; gap: 12px; padding: 13px; border-radius: 16px; background: #0a1a18; border: 1px solid rgba(188,226,216,.09); }
 .catch-location-title { display: flex; gap: 10px; align-items: flex-start; color: #bde7dc; }
 .catch-location-title > svg { flex: 0 0 auto; margin-top: 2px; }
 .catch-location-title strong, .catch-location-title span { display: block; }
@@ -23,6 +23,13 @@
 .catch-gear-option span { margin-top: 3px; font-size: .7rem; color: #7f9993; }
 .catch-gear-option.selected { border-color: rgba(103,211,181,.52); background: #0d2822; box-shadow: inset 0 0 0 1px rgba(103,211,181,.12); }
 .catch-gear-option.selected strong { color: #c6f5e7; }
+.catch-photo-picker { min-height: 94px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; border: 1px dashed rgba(103,211,181,.34); border-radius: 14px; background: #071514; color: #bde7dc; cursor: pointer; text-align: center; padding: 16px; }
+.catch-photo-picker span { font-size: .83rem; font-weight: 700; }
+.catch-photo-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.catch-photo-picker.disabled { opacity: .58; cursor: wait; }
+.catch-photo-preview-wrap { position: relative; overflow: hidden; border-radius: 14px; background: #071514; border: 1px solid rgba(197,227,219,.1); }
+.catch-photo-preview { display: block; width: 100%; max-height: 300px; object-fit: cover; }
+.catch-photo-remove { position: absolute; right: 10px; bottom: 10px; min-height: 40px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: rgba(4,12,11,.86); color: #f4dddd; padding: 9px 11px; backdrop-filter: blur(6px); }
 
 @media (min-width: 540px) {
   .catch-location-actions { grid-template-columns: 1fr 1fr; }

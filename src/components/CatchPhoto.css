@@ -1,0 +1,7 @@
+.catch-photo-wrap { margin: 9px 0 10px; overflow: hidden; border-radius: 14px; border: 1px solid rgba(188,226,216,.09); background: #071514; }
+.catch-photo { display: block; width: 100%; max-height: 320px; object-fit: cover; }
+.catch-photo-placeholder { margin: 9px 0 10px; min-height: 58px; display: flex; align-items: center; gap: 8px; border-radius: 12px; border: 1px dashed rgba(188,226,216,.12); color: #78938d; padding: 10px 12px; font-size: .75rem; }
+.catch-card-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 8px; }
+.catch-card-actions .catch-map-link { margin-top: 0; }
+.catch-delete-link { display: inline-flex; align-items: center; gap: 6px; padding: 0; min-height: 34px; border: 0; background: transparent; color: #c99090; font-size: .76rem; }
+@media (min-width: 720px) { .catch-photo { max-height: 360px; } }

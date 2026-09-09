@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Crosshair, MapPin, Navigation, PackageCheck, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Crosshair, ImagePlus, MapPin, Navigation, PackageCheck, Trash2, X } from 'lucide-react'
+import { compressCatchPhoto, formatPhotoBytes } from '../lib/photos'
 import './CatchEntryModal.css'
 
 function localDateTimeValue(date = new Date()) {
@@ -40,6 +41,14 @@ export default function CatchEntryModal({
   const [locationLabel, setLocationLabel] = useState('')
   const [locating, setLocating] = useState(false)
   const [locationStatus, setLocationStatus] = useState('')
+  const [photo, setPhoto] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState('')
+  const [photoStatus, setPhotoStatus] = useState('')
+  const [processingPhoto, setProcessingPhoto] = useState(false)
+
+  useEffect(() => () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview)
+  }, [photoPreview])
 
   const selectedSpot = useMemo(
     () => spots.find((spot) => spot.id === form.spotId) || null,
@@ -67,6 +76,36 @@ export default function CatchEntryModal({
     setGearIds((current) => current.includes(gearId)
       ? current.filter((id) => id !== gearId)
       : [...current, gearId])
+  }
+
+  async function selectPhoto(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setProcessingPhoto(true)
+    setPhotoStatus('Ottimizzo la foto sul dispositivo…')
+    try {
+      const compressed = await compressCatchPhoto(file)
+      const nextPreview = URL.createObjectURL(compressed.blob)
+      setPhoto(compressed)
+      setPhotoPreview(nextPreview)
+      setPhotoStatus(
+        `${formatPhotoBytes(compressed.originalBytes)} → ${formatPhotoBytes(compressed.compressedBytes)} · ${compressed.width}×${compressed.height}px`,
+      )
+    } catch (error) {
+      setPhoto(null)
+      setPhotoPreview('')
+      setPhotoStatus(error?.message || 'Non riesco a preparare questa foto.')
+    } finally {
+      setProcessingPhoto(false)
+      event.target.value = ''
+    }
+  }
+
+  function removePhoto() {
+    setPhoto(null)
+    setPhotoPreview('')
+    setPhotoStatus('Foto rimossa dalla cattura.')
   }
 
   function selectSpot(event) {
@@ -129,7 +168,7 @@ export default function CatchEntryModal({
 
   function submit(event) {
     event.preventDefault()
-    if (!form.species.trim() || saving || locating) return
+    if (!form.species.trim() || saving || locating || processingPhoto) return
 
     onSave({
       ...form,
@@ -137,6 +176,7 @@ export default function CatchEntryModal({
       species: form.species.trim(),
       spotId: form.spotId || null,
       gearIds,
+      photoBlob: photo?.blob ?? null,
       latitude: coordinates?.latitude ?? null,
       longitude: coordinates?.longitude ?? null,
       locationLabel: locationLabel || null,
@@ -159,6 +199,27 @@ export default function CatchEntryModal({
             <label>Peso (kg)<input inputMode="decimal" value={form.weight} onChange={update('weight')} /></label>
             <label>Lunghezza (cm)<input inputMode="decimal" value={form.length} onChange={update('length')} /></label>
           </div>
+
+          <section className="catch-photo-panel">
+            <div className="catch-location-title">
+              <ImagePlus size={18} />
+              <div><strong>Foto della cattura</strong><span>Facoltativa · XFish la riduce prima del salvataggio per contenere spazio e traffico</span></div>
+            </div>
+
+            {photoPreview ? (
+              <div className="catch-photo-preview-wrap">
+                <img src={photoPreview} className="catch-photo-preview" alt="Anteprima cattura" />
+                <button type="button" className="catch-photo-remove" onClick={removePhoto}><Trash2 size={16} /> Rimuovi foto</button>
+              </div>
+            ) : (
+              <label className={`catch-photo-picker${processingPhoto ? ' disabled' : ''}`}>
+                <ImagePlus size={20} />
+                <span>{processingPhoto ? 'Compressione in corso…' : 'Scegli foto o scatta'}</span>
+                <input type="file" accept="image/*" onChange={selectPhoto} disabled={processingPhoto || saving} />
+              </label>
+            )}
+            <small className="catch-location-status">{photoStatus || 'Obiettivo: circa 360 KB; limite massimo 512 KB. Nessuna trasformazione immagini a pagamento.'}</small>
+          </section>
 
           <section className="catch-gear-panel">
             <div className="catch-location-title">
@@ -234,7 +295,7 @@ export default function CatchEntryModal({
           </section>
 
           <label>Note<textarea rows="3" value={form.notes} onChange={update('notes')} placeholder="Condizioni, recupero, osservazioni…" /></label>
-          <button className="primary-button full-width" type="submit" disabled={saving || locating}>{saving ? 'Salvataggio…' : 'Salva cattura'}</button>
+          <button className="primary-button full-width" type="submit" disabled={saving || locating || processingPhoto}>{saving ? 'Salvataggio…' : processingPhoto ? 'Ottimizzo foto…' : 'Salva cattura'}</button>
         </form>
       </section>
     </div>
