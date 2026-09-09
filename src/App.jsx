@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   Backpack,
+  BarChart3,
   Fish,
   LogOut,
   MapPin,
@@ -21,25 +22,28 @@ import { useFishingForecast } from './hooks/useFishingForecast'
 import { createRemoteCatch, deleteRemoteCatch, loadRemoteCatches } from './lib/catches'
 import { createRemoteGear, deleteRemoteGear, loadRemoteGear, updateRemoteGear } from './lib/gear'
 import { deleteLocalCatchPhoto, saveLocalCatchPhoto } from './lib/photos'
+import { deleteLocalSpotPhoto, saveLocalSpotPhoto } from './lib/spotPhotos'
 import { createRemoteSpot, deleteRemoteSpot, loadRemoteSpots } from './lib/spots'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
 
 const SpotMapView = lazy(() => import('./components/SpotMapView'))
 const GearInventoryView = lazy(() => import('./components/GearInventoryView'))
+const StatsView = lazy(() => import('./components/StatsView'))
 
 const navItems = [
   { id: 'forecast', label: 'Previsioni', icon: Sun },
   { id: 'map', label: 'Mappa', icon: MapPinned },
   { id: 'journal', label: 'Diario', icon: NotebookTabs },
   { id: 'gear', label: 'Attrezzatura', icon: Backpack },
+  { id: 'stats', label: 'Statistiche', icon: BarChart3 },
 ]
 
 function gearName(item) {
   return [item?.brand, item?.model].filter(Boolean).join(' ') || item?.category || ''
 }
 
-function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCatch, cloudEnabled, syncStatus }) {
+function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCatch, onOpenStats, cloudEnabled, syncStatus }) {
   const spotById = useMemo(() => new Map(spots.map((spot) => [spot.id, spot])), [spots])
   const gearById = useMemo(() => new Map(gear.map((item) => [item.id, item])), [gear])
 
@@ -64,7 +68,10 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCat
           <h1>Diario catture</h1>
           <p>{cloudEnabled ? 'Catture, foto e attrezzatura sono sincronizzate con il tuo account XFish.' : 'Modalità ospite: dati e foto restano soltanto su questo dispositivo.'}</p>
         </div>
-        <button className="primary-button" onClick={onOpenCatch}><Plus size={18} /> Nuova cattura</button>
+        <div className="quick-actions">
+          <button className="secondary-button" onClick={onOpenStats}><BarChart3 size={18} /> Statistiche</button>
+          <button className="primary-button" onClick={onOpenCatch}><Plus size={18} /> Nuova cattura</button>
+        </div>
       </section>
 
       {syncStatus && <div className="status-banner">{syncStatus}</div>}
@@ -118,13 +125,14 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCat
   )
 }
 
-function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, catches, spots, gear }) {
+function ProfileView({ user, guestMode, onSignOut, onExitGuest, onOpenStats, locationLabel, catches, spots, gear }) {
   const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ospite'
   const geolocatedCatches = catches.filter((item) => (
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
   ) || item.spotId).length
   const catchesWithGear = catches.filter((item) => (item.gearIds ?? []).length > 0).length
   const catchesWithPhotos = catches.filter((item) => item.photoPath || item.photoLocalKey || item.photoUrl).length
+  const spotsWithPhotos = spots.filter((item) => item.photoPath || item.photoLocalKey || item.photoUrl).length
 
   return (
     <>
@@ -158,8 +166,12 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, c
           <span className="status-pill ready">Attiva</span>
         </div>
         <div className="connection-row">
-          <div><strong>Foto private</strong><span>{catchesWithPhotos} catture con foto · compressione sul dispositivo</span></div>
+          <div><strong>Foto private</strong><span>{catchesWithPhotos} catture · {spotsWithPhotos} spot con foto</span></div>
           <span className="status-pill ready">≤ 512 KB</span>
+        </div>
+        <div className="connection-row">
+          <div><strong>Statistiche</strong><span>Calcolate dal diario sul dispositivo, senza API aggiuntive</span></div>
+          <span className="status-pill ready">Attive</span>
         </div>
         <div className="connection-row">
           <div><strong>PWA</strong><span>Installazione dalla schermata home di Android/desktop</span></div>
@@ -168,6 +180,7 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel, c
       </section>
 
       <section className="quick-actions">
+        <button className="primary-button" onClick={onOpenStats}><BarChart3 size={18} /> Apri statistiche</button>
         {user && <button className="secondary-button" onClick={onSignOut}><LogOut size={18} /> Esci dall’account</button>}
         {guestMode && supabaseConfigured && <button className="primary-button" onClick={onExitGuest}>Accedi a XFish</button>}
       </section>
@@ -249,7 +262,7 @@ function App() {
       .then((remote) => {
         if (cancelled) return
         setSpots(remote)
-        setSpotStatus('Spot sincronizzati con XFish Cloud.')
+        setSpotStatus('Spot e foto sincronizzati con XFish Cloud.')
       })
       .catch(() => {
         if (!cancelled) setSpotStatus('Non riesco a sincronizzare gli spot. Riprova più tardi.')
@@ -340,9 +353,7 @@ function App() {
       } else {
         const { photoBlob, ...localItem } = item
         let photoLocalKey = ''
-        if (photoBlob) {
-          photoLocalKey = await saveLocalCatchPhoto(item.id, photoBlob)
-        }
+        if (photoBlob) photoLocalKey = await saveLocalCatchPhoto(item.id, photoBlob)
         const saved = {
           ...localItem,
           gearIds: item.gearIds ?? [],
@@ -390,13 +401,25 @@ function App() {
       if (user) {
         const saved = await createRemoteSpot(user.id, spot)
         setSpots((current) => [saved, ...current])
-        setSpotStatus('Spot salvato nel cloud.')
+        setSpotStatus(spot.photoBlob ? 'Spot e foto salvati nel cloud.' : 'Spot salvato nel cloud.')
       } else {
-        const saved = { ...spot, id: crypto.randomUUID(), createdAt: new Date().toISOString(), synced: false }
+        const { photoBlob, ...localSpot } = spot
+        const id = spot.id || crypto.randomUUID()
+        let photoLocalKey = ''
+        if (photoBlob) photoLocalKey = await saveLocalSpotPhoto(id, photoBlob)
+        const saved = {
+          ...localSpot,
+          id,
+          photoLocalKey,
+          photoPath: '',
+          photoUrl: '',
+          createdAt: new Date().toISOString(),
+          synced: false,
+        }
         const next = [saved, ...spots]
         setSpots(next)
         saveLocalState('xfish:spots', next)
-        setSpotStatus('Spot salvato su questo dispositivo.')
+        setSpotStatus(photoLocalKey ? 'Spot e foto salvati su questo dispositivo.' : 'Spot salvato su questo dispositivo.')
       }
       return true
     } catch (error) {
@@ -411,14 +434,17 @@ function App() {
     setSpotStatus('')
     try {
       if (user) {
-        await deleteRemoteSpot(user.id, spot.id)
+        const result = await deleteRemoteSpot(user.id, spot)
         setSpots((current) => current.filter((item) => item.id !== spot.id))
-        setSpotStatus('Spot eliminato dal cloud. Le coordinate delle catture già registrate restano memorizzate.')
+        setSpotStatus(result.photoCleanupFailed
+          ? 'Spot eliminato. La pulizia della foto verrà riprovata in seguito.'
+          : 'Spot e relativa foto eliminati dal cloud. Le coordinate delle catture già registrate restano memorizzate.')
       } else {
+        if (spot.photoLocalKey) await deleteLocalSpotPhoto(spot.photoLocalKey)
         const next = spots.filter((item) => item.id !== spot.id)
         setSpots(next)
         saveLocalState('xfish:spots', next)
-        setSpotStatus('Spot eliminato dal dispositivo.')
+        setSpotStatus('Spot e relativa foto eliminati dal dispositivo.')
       }
     } catch (error) {
       setSpotStatus(error?.message || 'Impossibile eliminare lo spot.')
@@ -522,6 +548,7 @@ function App() {
         onOpenCatch={() => setCatchModalOpen(true)}
         onOpenMap={openCatchOnMap}
         onDeleteCatch={deleteCatch}
+        onOpenStats={() => setActiveView('stats')}
         cloudEnabled={Boolean(user)}
         syncStatus={syncStatus}
       />
@@ -539,6 +566,12 @@ function App() {
         />
       </Suspense>
     )
+  } else if (activeView === 'stats') {
+    view = (
+      <Suspense fallback={<SectionLoadingScreen icon={BarChart3} title="Calcolo le statistiche…" text="L’analisi viene caricata solo quando la apri e usa i dati già presenti nel diario." />}>
+        <StatsView catches={catches} spots={spots} gear={gear} />
+      </Suspense>
+    )
   } else if (activeView === 'profile') {
     view = (
       <ProfileView
@@ -546,6 +579,7 @@ function App() {
         guestMode={guestMode}
         onSignOut={signOut}
         onExitGuest={() => setGuestMode(false)}
+        onOpenStats={() => setActiveView('stats')}
         locationLabel={locationLabel}
         catches={catches}
         spots={spots}
@@ -598,7 +632,7 @@ function App() {
           <button className={activeView === 'forecast' ? 'active' : ''} onClick={() => setActiveView('forecast')}><Sun /><span>Previsioni</span></button>
           <button className={activeView === 'map' ? 'active' : ''} onClick={() => setActiveView('map')}><MapPinned /><span>Mappa</span></button>
           <button className="add-button" onClick={() => setCatchModalOpen(true)} aria-label="Registra una cattura"><Plus /></button>
-          <button className={activeView === 'journal' ? 'active' : ''} onClick={() => setActiveView('journal')}><NotebookTabs /><span>Diario</span></button>
+          <button className={activeView === 'journal' || activeView === 'stats' ? 'active' : ''} onClick={() => setActiveView('journal')}><NotebookTabs /><span>Diario</span></button>
           <button className={activeView === 'gear' ? 'active' : ''} onClick={() => setActiveView('gear')}><Backpack /><span>Attrezzatura</span></button>
         </nav>
       </div>

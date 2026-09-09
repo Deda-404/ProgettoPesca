@@ -22,6 +22,7 @@ Principi architetturali:
 - inventario attrezzatura caricato dinamicamente soltanto quando viene aperto
 - foto compresse direttamente nel browser prima dell'upload
 - bucket foto privati, limite server-side di 512 KB per file
+- statistiche calcolate dal browser sui dati già caricati, senza API dedicate
 - query e trasferimenti dati mantenuti piccoli e paginati quando necessario
 - cache PWA e cache applicativa per ridurre richieste e banda
 
@@ -82,7 +83,7 @@ Con account autenticato i dati vengono sincronizzati nella tabella `gear` di Sup
 
 ### Attrezzatura associata alle catture
 
-Ogni cattura può essere collegata a più elementi dell'inventario, per esempio canna, mulinello, trecciato e artificiale. La relazione molti-a-molti è salvata nella tabella `catch_gear` e permette future statistiche per specie, spot e attrezzatura senza duplicare dati.
+Ogni cattura può essere collegata a più elementi dell'inventario, per esempio canna, mulinello, trecciato e artificiale. La relazione molti-a-molti è salvata nella tabella `catch_gear` e permette statistiche per specie, spot e attrezzatura senza duplicare dati.
 
 ## Foto delle catture
 
@@ -116,6 +117,26 @@ Gli spot usano la stessa pipeline di ottimizzazione delle catture:
 
 Questa scelta mantiene private le immagini e riduce Storage ed egress sui piani Free.
 
+## Statistiche personali
+
+La sezione Statistiche XFish viene caricata in lazy loading e calcola tutto nel browser sui dati già disponibili nel diario. Non aggiunge query dedicate, servizi esterni o costi.
+
+Mostra:
+
+- numero totale di catture e specie diverse
+- catture geolocalizzate e numero di spot/località utilizzati
+- percentuale operativa di catture con attrezzatura e foto
+- peso medio, peso totale noto e lunghezza media
+- specie più catturate
+- spot più produttivi
+- attrezzatura più usata
+- esche/artificiali più ricorrenti
+- distribuzione delle catture per mese
+- distribuzione per fascia oraria
+- evidenza automatica del mese e della fascia oraria più frequenti
+
+Le statistiche sono descrittive: riflettono soltanto lo storico personale registrato e non implicano causalità né garanzie di cattura.
+
 ## Avvio locale
 
 ```bash
@@ -143,7 +164,7 @@ Lo schema applicativo comprende:
 
 Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Catture e spot possono memorizzare anche il percorso privato della rispettiva foto.
 
-Lo Storage usa i bucket privati `catch-photos` e `spot-photos`, con policy che limitano ogni utente alla propria cartella. Gli indici duplicati non necessari sono stati rimossi; restano quelli utili alle query reali e alle future statistiche.
+Lo Storage usa i bucket privati `catch-photos` e `spot-photos`, con policy che limitano ogni utente alla propria cartella. Gli indici duplicati non necessari sono stati rimossi; restano quelli utili alle query reali e alle statistiche future.
 
 ## Autenticazione
 
@@ -174,4 +195,6 @@ Il file `render.yaml` è predisposto per una Static Site XFish. Variabili richie
 7. associazione attrezzatura alle catture ✅
 8. foto private delle catture con compressione client-side ✅
 9. foto degli spot con la stessa pipeline ottimizzata ✅
-10. statistiche personali per specie, spot e attrezzatura
+10. statistiche personali per specie, spot e attrezzatura ✅
+
+Il completamento di questa roadmap corrisponde alla milestone funzionale XFish 1.0.0. I blocchi successivi verranno gestiti come roadmap 2.x, mantenendo il vincolo dei piani Free.
