@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Fish, LocateFixed, MapPin, Plus, Trash2 } from 'lucide-react'
+import { Fish, ImagePlus, LocateFixed, MapPin, Plus, Trash2, X } from 'lucide-react'
+import SpotPhoto from './SpotPhoto'
+import { compressSpotPhoto, formatPhotoBytes } from '../lib/spotPhotos'
 import './SpotMapView.css'
 
 const SPOT_TYPES = [
@@ -29,9 +31,7 @@ function escapeHtml(value) {
 function catchCoordinates(item, spots) {
   const directLat = Number(item.latitude)
   const directLon = Number(item.longitude)
-  if (Number.isFinite(directLat) && Number.isFinite(directLon)) {
-    return { latitude: directLat, longitude: directLon }
-  }
+  if (Number.isFinite(directLat) && Number.isFinite(directLon)) return { latitude: directLat, longitude: directLon }
 
   if (!item.spotId) return null
   const spot = spots.find((candidate) => candidate.id === item.spotId)
@@ -61,21 +61,23 @@ export default function SpotMapView({
   const draftLayerRef = useRef(null)
   const [draftPoint, setDraftPoint] = useState(null)
   const [form, setForm] = useState({ name: '', type: 'spiaggia', notes: '', isPrivate: true })
+  const [photoBlob, setPhotoBlob] = useState(null)
+  const [photoInfo, setPhotoInfo] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState('')
+  const [photoStatus, setPhotoStatus] = useState('')
+  const [compressingPhoto, setCompressingPhoto] = useState(false)
 
   const center = useMemo(() => [Number(location.latitude), Number(location.longitude)], [location.latitude, location.longitude])
-  const geolocatedCatchCount = useMemo(
-    () => catches.filter((item) => catchCoordinates(item, spots)).length,
-    [catches, spots],
-  )
+  const geolocatedCatchCount = useMemo(() => catches.filter((item) => catchCoordinates(item, spots)).length, [catches, spots])
+
+  useEffect(() => () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview)
+  }, [photoPreview])
 
   useEffect(() => {
     if (!mapNodeRef.current || mapRef.current) return
 
-    const map = L.map(mapNodeRef.current, {
-      zoomControl: true,
-      attributionControl: true,
-    }).setView(center, 12)
-
+    const map = L.map(mapNodeRef.current, { zoomControl: true, attributionControl: true }).setView(center, 12)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
@@ -83,11 +85,7 @@ export default function SpotMapView({
 
     spotLayerRef.current = L.layerGroup().addTo(map)
     catchLayerRef.current = L.layerGroup().addTo(map)
-
-    map.on('click', (event) => {
-      setDraftPoint({ latitude: event.latlng.lat, longitude: event.latlng.lng })
-    })
-
+    map.on('click', (event) => setDraftPoint({ latitude: event.latlng.lat, longitude: event.latlng.lng }))
     mapRef.current = map
     setTimeout(() => map.invalidateSize(), 0)
 
@@ -98,8 +96,7 @@ export default function SpotMapView({
   }, [])
 
   useEffect(() => {
-    if (!mapRef.current) return
-    mapRef.current.setView(center, Math.max(mapRef.current.getZoom(), 12), { animate: true })
+    if (mapRef.current) mapRef.current.setView(center, Math.max(mapRef.current.getZoom(), 12), { animate: true })
   }, [center])
 
   useEffect(() => {
@@ -109,7 +106,6 @@ export default function SpotMapView({
 
     spots.forEach((spot) => {
       if (!Number.isFinite(Number(spot.latitude)) || !Number.isFinite(Number(spot.longitude))) return
-
       const marker = L.circleMarker([spot.latitude, spot.longitude], {
         radius: 8,
         weight: 3,
@@ -117,11 +113,11 @@ export default function SpotMapView({
         fillColor: '#50bda3',
         fillOpacity: 0.95,
       })
-
       marker.bindPopup(
         `<strong>${escapeHtml(spot.name)}</strong><br>` +
         `${escapeHtml(spot.type || 'spot')}` +
-        `${spot.notes ? `<br>${escapeHtml(spot.notes)}` : ''}`,
+        `${spot.notes ? `<br>${escapeHtml(spot.notes)}` : ''}` +
+        `${spot.photoPath || spot.photoLocalKey ? '<br>📷 Foto disponibile' : ''}`,
       )
       marker.addTo(layer)
     })
@@ -135,7 +131,6 @@ export default function SpotMapView({
     catches.forEach((item) => {
       const coordinates = catchCoordinates(item, spots)
       if (!coordinates) return
-
       const marker = L.circleMarker([coordinates.latitude, coordinates.longitude], {
         radius: 6,
         weight: 2,
@@ -143,7 +138,6 @@ export default function SpotMapView({
         fillColor: '#f0b45c',
         fillOpacity: 0.95,
       })
-
       const date = item.caughtAt ? new Date(item.caughtAt).toLocaleDateString('it-IT') : ''
       const detail = [date, item.lure, item.weight ? `${item.weight} kg` : ''].filter(Boolean).join(' · ')
       marker.bindPopup(
@@ -162,7 +156,6 @@ export default function SpotMapView({
       draftLayerRef.current = null
     }
     if (!draftPoint) return
-
     draftLayerRef.current = L.circleMarker([draftPoint.latitude, draftPoint.longitude], {
       radius: 10,
       weight: 3,
@@ -177,21 +170,52 @@ export default function SpotMapView({
     if (mapRef.current) mapRef.current.setView(center, 15, { animate: true })
   }
 
+  function clearPhoto() {
+    setPhotoBlob(null)
+    setPhotoInfo(null)
+    setPhotoStatus('')
+    setPhotoPreview('')
+  }
+
+  async function selectPhoto(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setCompressingPhoto(true)
+    setPhotoStatus('Ottimizzo la foto sul dispositivo…')
+    try {
+      const result = await compressSpotPhoto(file)
+      setPhotoBlob(result.blob)
+      setPhotoInfo(result)
+      setPhotoPreview(URL.createObjectURL(result.blob))
+      setPhotoStatus(`Foto pronta · ${formatPhotoBytes(result.originalBytes)} → ${formatPhotoBytes(result.compressedBytes)}.`)
+    } catch (error) {
+      clearPhoto()
+      setPhotoStatus(error?.message || 'Non riesco a preparare questa foto.')
+    } finally {
+      setCompressingPhoto(false)
+    }
+  }
+
   async function submit(event) {
     event.preventDefault()
-    if (!draftPoint || !form.name.trim() || saving) return
+    if (!draftPoint || !form.name.trim() || saving || compressingPhoto) return
 
     const success = await onSaveSpot({
+      id: crypto.randomUUID(),
       ...draftPoint,
       name: form.name.trim(),
       type: form.type,
       notes: form.notes.trim(),
       isPrivate: form.isPrivate,
+      photoBlob,
     })
 
     if (success !== false) {
       setForm({ name: '', type: 'spiaggia', notes: '', isPrivate: true })
       setDraftPoint(null)
+      clearPhoto()
     }
   }
 
@@ -219,10 +243,7 @@ export default function SpotMapView({
       <div className="spot-map-layout">
         <section className="section-block spot-map-card">
           <div className="spot-map-toolbar">
-            <div>
-              <strong>{locationLabel}</strong>
-              <span>{formatCoordinate(location.latitude)}, {formatCoordinate(location.longitude)}</span>
-            </div>
+            <div><strong>{locationLabel}</strong><span>{formatCoordinate(location.latitude)}, {formatCoordinate(location.longitude)}</span></div>
             <button type="button" className="secondary-button" onClick={useCurrentLocation}><MapPin size={17} /> Usa questo punto</button>
           </div>
           <div ref={mapNodeRef} className="spot-map-canvas" aria-label="Mappa interattiva degli spot e delle catture di pesca" />
@@ -235,29 +256,30 @@ export default function SpotMapView({
           </div>
 
           <form className="spot-form" onSubmit={submit}>
-            <label>
-              Nome
-              <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="es. Scogliera del pontile" required />
-            </label>
-            <label>
-              Tipo
-              <select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}>
-                {SPOT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
-            <label>
-              Note
-              <textarea rows="3" value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Accesso, fondale, esche efficaci…" />
-            </label>
-            <label className="spot-private-toggle">
-              <input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm((current) => ({ ...current, isPrivate: event.target.checked }))} />
-              <span>Spot privato</span>
-            </label>
-            <div className="spot-coordinate-box">
-              <span>Coordinate</span>
-              <strong>{draftPoint ? `${formatCoordinate(draftPoint.latitude)}, ${formatCoordinate(draftPoint.longitude)}` : 'Nessun punto selezionato'}</strong>
-            </div>
-            <button className="primary-button full-width" type="submit" disabled={!draftPoint || !form.name.trim() || saving}>
+            <label>Nome<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="es. Scogliera del pontile" required /></label>
+            <label>Tipo<select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}>{SPOT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Note<textarea rows="3" value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Accesso, fondale, esche efficaci…" /></label>
+
+            <section className="spot-photo-editor">
+              <div className="spot-photo-editor-title"><ImagePlus size={18} /><div><strong>Foto dello spot</strong><span>Facoltativa · compressa automaticamente sotto 512 KB</span></div></div>
+              {photoPreview ? (
+                <div className="spot-photo-preview">
+                  <img src={photoPreview} alt="Anteprima spot" />
+                  <button type="button" onClick={clearPhoto} aria-label="Rimuovi foto"><X size={17} /></button>
+                </div>
+              ) : (
+                <label className="spot-photo-picker">
+                  <ImagePlus size={18} /> {compressingPhoto ? 'Ottimizzazione…' : 'Aggiungi foto'}
+                  <input type="file" accept="image/*" capture="environment" onChange={selectPhoto} disabled={compressingPhoto || saving} />
+                </label>
+              )}
+              {photoInfo && <small>{photoInfo.width}×{photoInfo.height}px · {formatPhotoBytes(photoInfo.compressedBytes)}</small>}
+              {photoStatus && <small>{photoStatus}</small>}
+            </section>
+
+            <label className="spot-private-toggle"><input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm((current) => ({ ...current, isPrivate: event.target.checked }))} /><span>Spot privato</span></label>
+            <div className="spot-coordinate-box"><span>Coordinate</span><strong>{draftPoint ? `${formatCoordinate(draftPoint.latitude)}, ${formatCoordinate(draftPoint.longitude)}` : 'Nessun punto selezionato'}</strong></div>
+            <button className="primary-button full-width" type="submit" disabled={!draftPoint || !form.name.trim() || saving || compressingPhoto}>
               <Plus size={18} /> {saving ? 'Salvataggio…' : 'Salva spot'}
             </button>
           </form>
@@ -265,11 +287,7 @@ export default function SpotMapView({
       </div>
 
       <section className="section-block spot-list-card">
-        <div className="section-title-row">
-          <h2>I miei spot</h2>
-          <span className="muted-label">{spots.length}</span>
-        </div>
-
+        <div className="section-title-row"><h2>I miei spot</h2><span className="muted-label">{spots.length}</span></div>
         {spots.length === 0 ? (
           <div className="spot-empty">Nessuno spot salvato. Tocca la mappa per aggiungere il primo.</div>
         ) : (
@@ -279,6 +297,7 @@ export default function SpotMapView({
                 <div className="spot-row-icon"><MapPin size={18} /></div>
                 <div>
                   <strong>{spot.name}</strong>
+                  <SpotPhoto spot={spot} />
                   <span>{spot.type} · {formatCoordinate(spot.latitude)}, {formatCoordinate(spot.longitude)}</span>
                   {spot.notes && <small>{spot.notes}</small>}
                 </div>
