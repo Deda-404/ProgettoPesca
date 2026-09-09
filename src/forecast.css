@@ -1,0 +1,201 @@
+.forecast-intro { margin-bottom: 12px; }
+
+.forecast-location-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.coastal-presets {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+  margin-bottom: 8px;
+  scrollbar-width: none;
+}
+
+.coastal-presets::-webkit-scrollbar { display: none; }
+
+.coastal-presets button {
+  border: 1px solid rgba(172, 223, 212, .1);
+  background: #0d1d1c;
+  color: #8fa7a3;
+  border-radius: 999px;
+  padding: 8px 11px;
+  white-space: nowrap;
+  min-height: 38px;
+}
+
+.coastal-presets button.active {
+  background: #15332f;
+  color: #a9decf;
+  border-color: rgba(169, 222, 207, .28);
+}
+
+.forecast-loading {
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: #9fd9cb;
+}
+
+.forecast-loading span {
+  color: #829b96;
+  font-size: .85rem;
+  max-width: 400px;
+}
+
+.forecast-error {
+  color: #f0c7bd;
+  border-color: rgba(230, 145, 124, .2);
+  background: rgba(92, 36, 29, .3);
+}
+
+.forecast-score-card { margin-bottom: 14px; }
+
+.forecast-disclaimer {
+  color: #78928c;
+  font-size: .74rem;
+  line-height: 1.45;
+  margin: 12px 0 0;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #9be1cf;
+  background: rgba(113, 207, 182, .12);
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.live-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.forecast-days .day-card {
+  min-width: 94px;
+  display: grid;
+  gap: 4px;
+}
+
+.forecast-days small {
+  color: #6f8883;
+  font-size: .66rem;
+}
+
+.daily-score.good { color: #9fe1cf; }
+.daily-score.medium { color: #e0c68f; }
+.daily-score.low { color: #d9a397; }
+
+.detail-grid,
+.astronomy-grid,
+.solunar-grid,
+.tide-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.detail-grid > div,
+.astronomy-grid > div,
+.solunar-grid > div,
+.tide-list > div {
+  min-width: 0;
+  background: #0b1a19;
+  border-radius: 15px;
+  padding: 13px;
+}
+
+.detail-grid span,
+.astronomy-grid span,
+.solunar-grid span,
+.tide-list span {
+  display: block;
+  color: #829b96;
+  font-size: .74rem;
+  margin-bottom: 5px;
+}
+
+.detail-grid strong,
+.astronomy-grid strong,
+.solunar-grid strong,
+.tide-list strong {
+  display: block;
+  font-size: .92rem;
+  overflow-wrap: anywhere;
+}
+
+.detail-grid small,
+.tide-list small {
+  display: block;
+  color: #6f8883;
+  font-size: .7rem;
+  margin-top: 4px;
+}
+
+.astronomy-grid svg {
+  width: 18px;
+  height: 18px;
+  color: #8fd6c5;
+  margin-bottom: 10px;
+}
+
+.solunar-grid { margin-top: 10px; }
+
+.tide-list {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.forecast-note {
+  color: #7f9892;
+  font-size: .76rem;
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
+.forecast-source-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #69827d;
+  font-size: .7rem;
+  line-height: 1.45;
+  margin: 16px 2px 0;
+}
+
+@media (max-width: 390px) {
+  .detail-grid,
+  .astronomy-grid,
+  .solunar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tide-list {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 900px) {
+  .forecast-score-card { margin-bottom: 0; }
+  .current-summary { margin-top: 0; }
+  .detail-grid { grid-template-columns: repeat(4, 1fr); }
+  .astronomy-grid { grid-template-columns: repeat(4, 1fr); }
+  .tide-list { grid-template-columns: repeat(4, 1fr); }
+}

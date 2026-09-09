@@ -1,11 +1,12 @@
 {
   "name": "xfish",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "test": "node --test",
+    "build": "npm test && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

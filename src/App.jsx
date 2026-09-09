@@ -1,34 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Backpack,
-  CloudSun,
-  Compass,
   Fish,
   LocateFixed,
   LogOut,
   MapPinned,
-  Moon,
   NotebookTabs,
   Plus,
   Settings,
   Sun,
-  Waves,
-  Wind,
   X,
 } from 'lucide-react'
 import AuthPanel from './components/AuthPanel'
+import LiveForecastView from './components/LiveForecastView'
+import { DEFAULT_LOCATION, isInItaly, nearestPreset } from './config/locations'
 import { useAuth } from './hooks/useAuth'
+import { useFishingForecast } from './hooks/useFishingForecast'
 import { createRemoteCatch, loadRemoteCatches } from './lib/catches'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
-
-const days = [
-  { day: 'Oggi', score: 87 },
-  { day: 'Gio', score: 78 },
-  { day: 'Ven', score: 92 },
-  { day: 'Sab', score: 84 },
-  { day: 'Dom', score: 71 },
-]
 
 const navItems = [
   { id: 'forecast', label: 'Previsioni', icon: Sun },
@@ -37,98 +27,14 @@ const navItems = [
   { id: 'gear', label: 'Attrezzatura', icon: Backpack },
 ]
 
-function ScoreCard() {
-  return (
-    <section className="hero-card">
-      <div className="eyebrow">Attività pesci · dati dimostrativi</div>
-      <div className="score-row">
-        <div>
-          <div className="score">87%</div>
-          <div className="score-label">Molto buona</div>
-        </div>
-        <div className="fish-orbit"><Fish size={42} /></div>
-      </div>
-      <div className="time-grid">
-        <div><span>Periodo maggiore</span><strong>19:10–21:05</strong></div>
-        <div><span>Periodo minore</span><strong>06:35–07:25</strong></div>
-      </div>
-    </section>
-  )
-}
-
-function ForecastView({ location, locationStatus, onLocate, onOpenCatch }) {
-  return (
-    <>
-      <section className="page-intro">
-        <div>
-          <div className="eyebrow">Oggi</div>
-          <h1>Quando conviene pescare?</h1>
-          <p>Una schermata rapida da consultare sul posto, pensata prima di tutto per il telefono.</p>
-        </div>
-        <button className="secondary-button" onClick={onLocate}>
-          <LocateFixed size={18} /> {location ? 'Aggiorna posizione' : 'Usa la mia posizione'}
-        </button>
-      </section>
-
-      {locationStatus && <div className="status-banner">{locationStatus}</div>}
-      {location && (
-        <div className="location-chip">
-          <Compass size={16} /> {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
-        </div>
-      )}
-
-      <div className="desktop-dashboard-grid">
-        <div>
-          <ScoreCard />
-          <section className="days-strip" aria-label="Previsioni prossimi giorni">
-            {days.map((item) => (
-              <div className="day-card" key={item.day}>
-                <span>{item.day}</span>
-                <strong>{item.score}%</strong>
-              </div>
-            ))}
-          </section>
-        </div>
-
-        <section className="section-block">
-          <div className="section-title-row">
-            <h2>Condizioni</h2>
-            <span className="muted-label">Demo</span>
-          </div>
-          <div className="conditions-grid">
-            <article><Waves /><span>Mare</span><strong>Poco mosso</strong></article>
-            <article><Wind /><span>Vento</span><strong>SW 8 km/h</strong></article>
-            <article><CloudSun /><span>Meteo</span><strong>23 °C</strong></article>
-            <article><Moon /><span>Luna</span><strong>74%</strong></article>
-          </div>
-        </section>
-      </div>
-
-      <section className="section-block advice-card">
-        <div className="advice-icon"><Fish /></div>
-        <div>
-          <div className="eyebrow">Cosa pesco oggi?</div>
-          <h2>Prova la spigola al tramonto</h2>
-          <p>Fascia consigliata 19:10–21:05. Minnow 10–12 cm, recupero lento con pause. Questa indicazione verrà sostituita dai dati reali quando collegheremo le API meteo/marine.</p>
-        </div>
-      </section>
-
-      <section className="quick-actions">
-        <button className="primary-button" onClick={onOpenCatch}><Plus size={18} /> Registra una cattura</button>
-        <button className="secondary-button" onClick={onLocate}><LocateFixed size={18} /> Salva posizione attuale</button>
-      </section>
-    </>
-  )
-}
-
-function MapView({ location, onLocate }) {
+function MapView({ location, locationLabel, onLocate }) {
   return (
     <>
       <section className="page-intro compact">
         <div>
           <div className="eyebrow">Spot personali</div>
           <h1>Mappa</h1>
-          <p>Base pronta per integrare OpenStreetMap/Leaflet e salvare spot privati su Supabase.</p>
+          <p>La posizione meteo-mare attiva è {locationLabel}. Nel prossimo blocco questa schermata diventerà una mappa reale con spot e catture.</p>
         </div>
         <button className="secondary-button" onClick={onLocate}><LocateFixed size={18} /> Localizzami</button>
       </section>
@@ -137,8 +43,8 @@ function MapView({ location, onLocate }) {
         <div className="map-grid" aria-hidden="true" />
         <div className="map-pin"><MapPinned size={34} /></div>
         <div className="map-copy">
-          <strong>{location ? 'Posizione rilevata' : 'Mappa interattiva in preparazione'}</strong>
-          <span>{location ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : 'Il prossimo step sarà il layer reale con spot, catture e preferiti.'}</span>
+          <strong>{locationLabel}</strong>
+          <span>{location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}</span>
         </div>
       </section>
     </>
@@ -206,7 +112,7 @@ function GearView() {
   )
 }
 
-function ProfileView({ user, guestMode, onSignOut, onExitGuest }) {
+function ProfileView({ user, guestMode, onSignOut, onExitGuest, locationLabel }) {
   const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ospite'
 
   return (
@@ -227,6 +133,10 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest }) {
         <div className="connection-row">
           <div><strong>Cloud XFish</strong><span>{user ? 'Dati sincronizzati tra i tuoi dispositivi' : 'Disponibile dopo l’accesso'}</span></div>
           <span className={user ? 'status-pill ready' : 'status-pill pending'}>{user ? 'Attivo' : 'Locale'}</span>
+        </div>
+        <div className="connection-row">
+          <div><strong>Area previsioni</strong><span>Italia · priorità costa Livorno–La Spezia</span></div>
+          <span className="status-pill ready">{locationLabel}</span>
         </div>
         <div className="connection-row">
           <div><strong>PWA</strong><span>Installazione dalla schermata home di Android/desktop</span></div>
@@ -294,12 +204,14 @@ function App() {
   const [activeView, setActiveView] = useState('forecast')
   const [catchModalOpen, setCatchModalOpen] = useState(false)
   const [savingCatch, setSavingCatch] = useState(false)
-  const [location, setLocation] = useState(null)
   const [locationStatus, setLocationStatus] = useState('')
   const [syncStatus, setSyncStatus] = useState('')
+  const [forecastLocation, setForecastLocation] = useState(() => loadLocalState('xfish:forecast-location', DEFAULT_LOCATION))
   const [catches, setCatches] = useState(() => loadLocalState('xfish:catches', loadLocalState('progetto-pesca:catches', [])))
+  const { data: forecast, loading: forecastLoading, error: forecastError } = useFishingForecast(forecastLocation)
 
   useEffect(() => saveLocalState('xfish:guest-mode', guestMode), [guestMode])
+  useEffect(() => saveLocalState('xfish:forecast-location', forecastLocation), [forecastLocation])
 
   useEffect(() => {
     if (user) setGuestMode(false)
@@ -336,6 +248,17 @@ function App() {
     return source.split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'XF'
   }, [user])
 
+  const locationLabel = forecastLocation.name || 'Posizione GPS'
+
+  function selectForecastLocation(location) {
+    setForecastLocation({
+      name: location.name,
+      latitude: location.latitude,
+      longitude: location.longitude,
+    })
+    setLocationStatus(`Previsioni aggiornate su ${location.name}.`)
+  }
+
   function locateUser() {
     if (!navigator.geolocation) {
       setLocationStatus('La geolocalizzazione non è supportata da questo browser.')
@@ -345,8 +268,17 @@ function App() {
     setLocationStatus('Rilevamento posizione…')
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude })
-        setLocationStatus('Posizione aggiornata correttamente.')
+        const coordinates = { latitude: position.coords.latitude, longitude: position.coords.longitude }
+        const nearest = nearestPreset(coordinates)
+        const closeToCoreCoast = nearest?.distance < 0.025
+        const name = closeToCoreCoast ? `GPS · ${nearest.name}` : 'Posizione GPS'
+
+        setForecastLocation({ ...coordinates, name })
+        setLocationStatus(
+          isInItaly(coordinates)
+            ? 'Posizione aggiornata. Meteo su cella terrestre e mare sulla cella marina più vicina.'
+            : 'Posizione fuori dall’Italia: XFish è configurato e verificato principalmente per il territorio italiano.',
+        )
       },
       () => setLocationStatus('Non è stato possibile ottenere la posizione. Controlla i permessi del browser.'),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
@@ -383,11 +315,29 @@ function App() {
   if (supabaseConfigured && !user && !guestMode) return <AuthPanel onGuest={() => setGuestMode(true)} />
 
   let view
-  if (activeView === 'map') view = <MapView location={location} onLocate={locateUser} />
-  else if (activeView === 'journal') view = <JournalView catches={catches} onOpenCatch={() => setCatchModalOpen(true)} cloudEnabled={Boolean(user)} syncStatus={syncStatus} />
-  else if (activeView === 'gear') view = <GearView />
-  else if (activeView === 'profile') view = <ProfileView user={user} guestMode={!user} onSignOut={signOut} onExitGuest={() => setGuestMode(false)} />
-  else view = <ForecastView location={location} locationStatus={locationStatus} onLocate={locateUser} onOpenCatch={() => setCatchModalOpen(true)} />
+  if (activeView === 'map') {
+    view = <MapView location={forecastLocation} locationLabel={locationLabel} onLocate={locateUser} />
+  } else if (activeView === 'journal') {
+    view = <JournalView catches={catches} onOpenCatch={() => setCatchModalOpen(true)} cloudEnabled={Boolean(user)} syncStatus={syncStatus} />
+  } else if (activeView === 'gear') {
+    view = <GearView />
+  } else if (activeView === 'profile') {
+    view = <ProfileView user={user} guestMode={!user} onSignOut={signOut} onExitGuest={() => setGuestMode(false)} locationLabel={locationLabel} />
+  } else {
+    view = (
+      <LiveForecastView
+        location={forecastLocation}
+        locationLabel={locationLabel}
+        locationStatus={locationStatus}
+        onLocate={locateUser}
+        onSelectPreset={selectForecastLocation}
+        onOpenCatch={() => setCatchModalOpen(true)}
+        forecast={forecast}
+        loading={forecastLoading}
+        error={forecastError}
+      />
+    )
+  }
 
   return (
     <div className="app-frame">
@@ -404,12 +354,12 @@ function App() {
           <button className={activeView === 'profile' ? 'active' : ''} onClick={() => setActiveView('profile')}><Settings size={19} /> Profilo</button>
         </nav>
 
-        <div className="desktop-sidebar-note"><span className="status-dot" /> Mobile-first · PWA</div>
+        <div className="desktop-sidebar-note"><span className="status-dot" /> Italia · mobile-first · PWA</div>
       </aside>
 
       <div className="app-shell">
         <header className="topbar">
-          <div><div className="mobile-brand">XFish</div><div className="location">{activeLabel}</div></div>
+          <div><div className="mobile-brand">XFish</div><div className="location">{activeLabel} · {locationLabel}</div></div>
           <button className="avatar" aria-label="Apri profilo" onClick={() => setActiveView('profile')}>{initials}</button>
         </header>
 
