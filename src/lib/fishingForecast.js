@@ -5,10 +5,12 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 function timeToMinutes(value) {
   if (!value || !value.includes('T')) return null
   const [hours, minutes] = value.split('T')[1].split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
   return hours * 60 + minutes
 }
 
 function minutesToTime(total) {
+  if (!Number.isFinite(total)) return '—'
   const normalized = ((Math.round(total) % 1440) + 1440) % 1440
   const hours = Math.floor(normalized / 60)
   const minutes = normalized % 60
@@ -72,17 +74,41 @@ function pressureTrend(hourly) {
   return current - past
 }
 
-function tideRangeForDay(marineHourly, dateString) {
-  const times = marineHourly?.time || []
-  const values = marineHourly?.sea_level_height_msl || []
-  const points = values.filter((value, index) => times[index]?.startsWith(dateString) && Number.isFinite(value))
+function tideRangeForDay(series, dateString) {
+  const times = series?.time || []
+  const values = series?.sea_level_height_msl || []
+  const points = values
+    .map(Number)
+    .filter((value, index) => times[index]?.startsWith(dateString) && Number.isFinite(value))
   if (!points.length) return null
   return Math.max(...points) - Math.min(...points)
 }
 
-export function findTideEvents(marineHourly, limit = 4) {
-  const times = marineHourly?.time || []
-  const values = marineHourly?.sea_level_height_msl || []
+function nearestSeriesValue(series, variable) {
+  const times = series?.time || []
+  const values = series?.[variable] || []
+  if (!times.length || !values.length) return null
+
+  const now = Date.now()
+  let bestIndex = -1
+  let bestDistance = Number.POSITIVE_INFINITY
+
+  times.forEach((time, index) => {
+    const value = Number(values[index])
+    if (!Number.isFinite(value)) return
+    const distance = Math.abs(new Date(time).getTime() - now)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      bestIndex = index
+    }
+  })
+
+  return bestIndex >= 0 ? Number(values[bestIndex]) : null
+}
+
+export function findTideEvents(series, limit = 4) {
+  const times = series?.time || []
+  const values = series?.sea_level_height_msl || []
   const now = Date.now()
   const events = []
 
@@ -141,11 +167,13 @@ function scoreLabel(score) {
 function buildAdvice({ month, wave, wind, seaTemp, sunrise, sunset, score }) {
   const dawn = sunrise?.split('T')[1]?.slice(0, 5) || 'alba'
   const dusk = sunset?.split('T')[1]?.slice(0, 5) || 'tramonto'
+  const dawnMinutes = timeToMinutes(sunrise)
+  const postDawn = Number.isFinite(dawnMinutes) ? minutesToTime(dawnMinutes + 90) : 'circa 90 min dopo l’alba'
 
   if (month >= 5 && month <= 10 && seaTemp >= 20 && wave <= 1.3 && wind <= 30) {
     return {
       title: 'Serra e predatori costieri',
-      text: `Condizioni compatibili con spinning a serra e altri predatori. Prova soprattutto ${dawn}–${minutesToTime(timeToMinutes(sunrise) + 90)} e nell’ultima ora prima delle ${dusk}.`,
+      text: `Condizioni compatibili con spinning a serra e altri predatori. Prova soprattutto ${dawn}–${postDawn} e nell’ultima ora prima delle ${dusk}.`,
     }
   }
 
@@ -167,11 +195,13 @@ export function buildFishingForecast(weather, marine) {
   const currentMarine = marine?.current || {}
   const dailyWeather = weather?.daily || {}
   const dailyMarine = marine?.daily || {}
+  const tideSeries = marine?.minutely_15?.time?.length ? marine.minutely_15 : marine?.hourly
   const todayDate = dailyWeather.time?.[0]
   const moon = moonInfo(Number(dailyWeather.moon_phase?.[0]))
   const solunar = buildSolunarPeriods(dailyWeather.moonrise?.[0], dailyWeather.moonset?.[0])
   const pressureDelta = pressureTrend(weather?.hourly)
-  const tideRange = tideRangeForDay(marine?.hourly, todayDate)
+  const tideRange = tideRangeForDay(tideSeries, todayDate)
+  const seaLevel = nearestSeriesValue(tideSeries, 'sea_level_height_msl')
 
   const score = scoreConditions({
     wind: Number(currentWeather.wind_speed_10m) || 0,
@@ -206,8 +236,9 @@ export function buildFishingForecast(weather, marine) {
   })
 
   const seaTemp = Number(currentMarine.sea_surface_temperature)
+  const month = todayDate ? new Date(`${todayDate}T12:00:00`).getMonth() + 1 : new Date().getMonth() + 1
   const advice = buildAdvice({
-    month: new Date().getMonth() + 1,
+    month,
     wave: Number(currentMarine.wave_height) || 0,
     wind: Number(currentWeather.wind_speed_10m) || 0,
     seaTemp: Number.isFinite(seaTemp) ? seaTemp : 0,
@@ -239,7 +270,7 @@ export function buildFishingForecast(weather, marine) {
       seaTemperature: currentMarine.sea_surface_temperature,
       currentVelocity: currentMarine.ocean_current_velocity,
       currentDirection: compassDirection(currentMarine.ocean_current_direction),
-      seaLevel: currentMarine.sea_level_height_msl,
+      seaLevel,
     },
     astronomy: {
       sunrise: dailyWeather.sunrise?.[0],
@@ -249,7 +280,7 @@ export function buildFishingForecast(weather, marine) {
       moon,
       solunar,
     },
-    tideEvents: findTideEvents(marine?.hourly),
+    tideEvents: findTideEvents(tideSeries),
     days,
     advice,
   }
