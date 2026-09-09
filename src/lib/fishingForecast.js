@@ -1,4 +1,4 @@
-import { compassDirection, weatherCodeLabel } from './openMeteo'
+import { compassDirection, weatherCodeLabel } from './openMeteo.js'
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 
@@ -197,7 +197,8 @@ export function buildFishingForecast(weather, marine) {
   const dailyMarine = marine?.daily || {}
   const tideSeries = marine?.minutely_15?.time?.length ? marine.minutely_15 : marine?.hourly
   const todayDate = dailyWeather.time?.[0]
-  const moon = moonInfo(Number(dailyWeather.moon_phase?.[0]))
+  const moonPhaseRaw = dailyWeather.moon_phase?.[0]
+  const moon = moonInfo(moonPhaseRaw === null || moonPhaseRaw === undefined ? Number.NaN : Number(moonPhaseRaw))
   const solunar = buildSolunarPeriods(dailyWeather.moonrise?.[0], dailyWeather.moonset?.[0])
   const pressureDelta = pressureTrend(weather?.hourly)
   const tideRange = tideRangeForDay(tideSeries, todayDate)
@@ -214,7 +215,8 @@ export function buildFishingForecast(weather, marine) {
   })
 
   const days = (dailyWeather.time || []).map((date, index) => {
-    const dayMoon = moonInfo(Number(dailyWeather.moon_phase?.[index]))
+    const rawPhase = dailyWeather.moon_phase?.[index]
+    const dayMoon = moonInfo(rawPhase === null || rawPhase === undefined ? Number.NaN : Number(rawPhase))
     const dayScore = scoreConditions({
       wind: Number(dailyWeather.wind_speed_10m_max?.[index]) || 0,
       gust: Number(dailyWeather.wind_gusts_10m_max?.[index]) || 0,
