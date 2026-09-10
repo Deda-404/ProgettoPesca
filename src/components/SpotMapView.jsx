@@ -1,411 +1,57 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Fish, ImagePlus, LocateFixed, MapPin, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { Fish, ImagePlus, LocateFixed, MapPin, Pencil, Plus, Search, Star, Trash2, X } from 'lucide-react'
 import SpotPhoto from './SpotPhoto'
+import VisibilityFields from './VisibilityFields'
 import { compressSpotPhoto, formatPhotoBytes } from '../lib/spotPhotos'
+import { loadMyGroups } from '../lib/groups'
+import { loadFavoriteSpotIds, loadRemoteSpotsByScope, setSpotFavorite } from '../lib/spots'
 import './SpotMapView.css'
 
-const SPOT_TYPES = [
-  ['spiaggia', 'Spiaggia'],
-  ['scoglio', 'Scoglio'],
-  ['foce', 'Foce'],
-  ['porto', 'Porto'],
-  ['barca', 'Barca'],
-  ['altro', 'Altro'],
-]
+const SPOT_TYPES = [['spiaggia','Spiaggia'],['scoglio','Scoglio'],['foce','Foce'],['porto','Porto'],['barca','Barca'],['altro','Altro']]
+const EMPTY_FORM = { name:'', type:'spiaggia', notes:'', visibility:'private', groupId:'', isPrivate:true }
+function formatCoordinate(value){return Number.isFinite(Number(value))?Number(value).toFixed(5):'—'}
+function escapeHtml(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;')}
+function catchCoordinates(item,spots){const lat=Number(item.latitude),lon=Number(item.longitude);if(Number.isFinite(lat)&&Number.isFinite(lon))return{latitude:lat,longitude:lon};const spot=item.spotId?spots.find((x)=>x.id===item.spotId):null;if(!spot)return null;return{latitude:Number(spot.latitude),longitude:Number(spot.longitude)}}
 
-const EMPTY_FORM = { name: '', type: 'spiaggia', notes: '', isPrivate: true }
+export default function SpotMapView({ location, locationLabel, spots, catches=[], onLocate, onSaveSpot, onDeleteSpot, saving, status, cloudEnabled, userId='' }) {
+  const mapNodeRef=useRef(null),mapRef=useRef(null),spotLayerRef=useRef(null),catchLayerRef=useRef(null),draftLayerRef=useRef(null),editorRef=useRef(null)
+  const [scope,setScope]=useState('private'),[scopeGroupId,setScopeGroupId]=useState(''),[groups,setGroups]=useState([]),[displaySpots,setDisplaySpots]=useState(spots),[favoriteIds,setFavoriteIds]=useState([]),[scopeStatus,setScopeStatus]=useState('')
+  const [draftPoint,setDraftPoint]=useState(null),[form,setForm]=useState(EMPTY_FORM),[editingId,setEditingId]=useState(null),[removeExistingPhoto,setRemoveExistingPhoto]=useState(false),[photoBlob,setPhotoBlob]=useState(null),[photoInfo,setPhotoInfo]=useState(null),[photoPreview,setPhotoPreview]=useState(''),[photoStatus,setPhotoStatus]=useState(''),[compressingPhoto,setCompressingPhoto]=useState(false),[spotSearch,setSpotSearch]=useState('')
+  const center=useMemo(()=>[Number(location.latitude),Number(location.longitude)],[location.latitude,location.longitude])
+  const editingSpot=useMemo(()=>spots.find((spot)=>spot.id===editingId)||null,[editingId,spots])
+  const currentSpots=scope==='private'?spots:displaySpots
+  const visibleCatches=scope==='private'?catches:[]
+  const geolocatedCatchCount=useMemo(()=>visibleCatches.filter((item)=>catchCoordinates(item,currentSpots)).length,[visibleCatches,currentSpots])
+  const filteredSpots=useMemo(()=>{const term=spotSearch.trim().toLowerCase();return !term?currentSpots:currentSpots.filter((spot)=>[spot.name,spot.type,spot.notes,formatCoordinate(spot.latitude),formatCoordinate(spot.longitude)].filter(Boolean).join(' ').toLowerCase().includes(term))},[currentSpots,spotSearch])
+  const hasExistingPhoto=Boolean(editingSpot&&!removeExistingPhoto&&(editingSpot.photoPath||editingSpot.photoLocalKey||editingSpot.photoUrl))
 
-function formatCoordinate(value) {
-  return Number.isFinite(Number(value)) ? Number(value).toFixed(5) : '—'
-}
+  useEffect(()=>()=>{if(photoPreview)URL.revokeObjectURL(photoPreview)},[photoPreview])
+  useEffect(()=>{if(!cloudEnabled||!userId)return;Promise.all([loadMyGroups(userId),loadFavoriteSpotIds(userId)]).then(([g,f])=>{setGroups(g);setFavoriteIds(f)}).catch(()=>setScopeStatus('Non riesco a caricare gruppi o preferiti.'))},[cloudEnabled,userId])
+  useEffect(()=>{if(scope==='private'){setDisplaySpots(spots);return}if(!cloudEnabled||!userId)return;if(scope==='group'&&!scopeGroupId){setDisplaySpots([]);return}setScopeStatus('Carico la mappa selezionata…');loadRemoteSpotsByScope(userId,scope,scopeGroupId).then((rows)=>{setDisplaySpots(rows);setScopeStatus('')}).catch(()=>setScopeStatus('Non riesco a caricare gli spot di questa mappa.'))},[scope,scopeGroupId,cloudEnabled,userId,spots])
+  useEffect(()=>{if(!mapNodeRef.current||mapRef.current)return;const map=L.map(mapNodeRef.current,{zoomControl:true,attributionControl:true}).setView(center,12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);spotLayerRef.current=L.layerGroup().addTo(map);catchLayerRef.current=L.layerGroup().addTo(map);map.on('click',(event)=>setDraftPoint({latitude:event.latlng.lat,longitude:event.latlng.lng}));mapRef.current=map;setTimeout(()=>map.invalidateSize(),0);return()=>{map.remove();mapRef.current=null}},[])
+  useEffect(()=>{if(mapRef.current)mapRef.current.setView(center,Math.max(mapRef.current.getZoom(),12),{animate:true})},[center])
+  useEffect(()=>{const layer=spotLayerRef.current;if(!layer)return;layer.clearLayers();currentSpots.forEach((spot)=>{if(!Number.isFinite(Number(spot.latitude))||!Number.isFinite(Number(spot.longitude)))return;const marker=L.circleMarker([spot.latitude,spot.longitude],{radius:8,weight:3,color:'#d8f6ed',fillColor:'#50bda3',fillOpacity:.95});marker.bindPopup(`<strong>${escapeHtml(spot.name)}</strong><br>${escapeHtml(spot.type||'spot')}<br>${escapeHtml(spot.visibility||'private')}${spot.notes?`<br>${escapeHtml(spot.notes)}`:''}`);marker.addTo(layer)})},[currentSpots])
+  useEffect(()=>{const layer=catchLayerRef.current;if(!layer)return;layer.clearLayers();visibleCatches.forEach((item)=>{const c=catchCoordinates(item,currentSpots);if(!c)return;const marker=L.circleMarker([c.latitude,c.longitude],{radius:6,weight:2,color:'#fff2c7',fillColor:'#f0b45c',fillOpacity:.95});marker.bindPopup(`<strong>🐟 ${escapeHtml(item.species)}</strong>`);marker.addTo(layer)})},[visibleCatches,currentSpots])
+  useEffect(()=>{if(!mapRef.current)return;if(draftLayerRef.current){draftLayerRef.current.remove();draftLayerRef.current=null}if(!draftPoint)return;draftLayerRef.current=L.circleMarker([draftPoint.latitude,draftPoint.longitude],{radius:10,weight:3,color:'#f5d98b',fillColor:'#f5d98b',fillOpacity:.45}).addTo(mapRef.current)},[draftPoint])
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
-}
+  function clearPhoto(){setPhotoBlob(null);setPhotoInfo(null);setPhotoStatus('');setPhotoPreview('')}
+  function resetEditor(){setEditingId(null);setDraftPoint(null);setForm(EMPTY_FORM);setRemoveExistingPhoto(false);clearPhoto()}
+  function startEdit(spot){if(spot.ownerId&&spot.ownerId!==userId)return;clearPhoto();setEditingId(spot.id);setDraftPoint({latitude:Number(spot.latitude),longitude:Number(spot.longitude)});setForm({name:spot.name||'',type:spot.type||'altro',notes:spot.notes||'',visibility:spot.visibility||'private',groupId:spot.groupId||'',isPrivate:(spot.visibility||'private')==='private'});setRemoveExistingPhoto(false);requestAnimationFrame(()=>editorRef.current?.scrollIntoView({block:'start'}))}
+  async function selectPhoto(event){const file=event.target.files?.[0];event.target.value='';if(!file)return;setCompressingPhoto(true);try{const result=await compressSpotPhoto(file);setPhotoBlob(result.blob);setPhotoInfo(result);setPhotoPreview(URL.createObjectURL(result.blob));setRemoveExistingPhoto(false);setPhotoStatus(`Foto pronta · ${formatPhotoBytes(result.compressedBytes)}.`)}catch(error){clearPhoto();setPhotoStatus(error?.message||'Non riesco a preparare questa foto.')}finally{setCompressingPhoto(false)}}
+  async function submit(event){event.preventDefault();if(!draftPoint||!form.name.trim()||saving||compressingPhoto||(form.visibility==='group'&&!form.groupId))return;const payload={id:editingId||crypto.randomUUID(),...draftPoint,name:form.name.trim(),type:form.type,notes:form.notes.trim(),visibility:form.visibility,groupId:form.groupId,isPrivate:form.visibility==='private',photoBlob,photoLocalKey:editingSpot?.photoLocalKey||'',photoPath:editingSpot?.photoPath||'',photoUrl:editingSpot?.photoUrl||'',removePhoto:removeExistingPhoto};const success=await onSaveSpot(payload);if(success!==false)resetEditor()}
+  async function toggleFavorite(spot){const favorite=!favoriteIds.includes(spot.id);try{await setSpotFavorite(userId,spot.id,favorite);setFavoriteIds((current)=>favorite?[...new Set([...current,spot.id])]:current.filter((id)=>id!==spot.id))}catch(error){setScopeStatus(error?.message||'Impossibile aggiornare i preferiti.')}}
 
-function catchCoordinates(item, spots) {
-  const directLat = Number(item.latitude)
-  const directLon = Number(item.longitude)
-  if (Number.isFinite(directLat) && Number.isFinite(directLon)) return { latitude: directLat, longitude: directLon }
-
-  if (!item.spotId) return null
-  const spot = spots.find((candidate) => candidate.id === item.spotId)
-  if (!spot) return null
-
-  const latitude = Number(spot.latitude)
-  const longitude = Number(spot.longitude)
-  return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null
-}
-
-export default function SpotMapView({
-  location,
-  locationLabel,
-  spots,
-  catches = [],
-  onLocate,
-  onSaveSpot,
-  onDeleteSpot,
-  saving,
-  status,
-  cloudEnabled,
-}) {
-  const mapNodeRef = useRef(null)
-  const mapRef = useRef(null)
-  const spotLayerRef = useRef(null)
-  const catchLayerRef = useRef(null)
-  const draftLayerRef = useRef(null)
-  const editorRef = useRef(null)
-  const [draftPoint, setDraftPoint] = useState(null)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [editingId, setEditingId] = useState(null)
-  const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false)
-  const [photoBlob, setPhotoBlob] = useState(null)
-  const [photoInfo, setPhotoInfo] = useState(null)
-  const [photoPreview, setPhotoPreview] = useState('')
-  const [photoStatus, setPhotoStatus] = useState('')
-  const [compressingPhoto, setCompressingPhoto] = useState(false)
-  const [spotSearch, setSpotSearch] = useState('')
-
-  const center = useMemo(() => [Number(location.latitude), Number(location.longitude)], [location.latitude, location.longitude])
-  const editingSpot = useMemo(() => spots.find((spot) => spot.id === editingId) || null, [editingId, spots])
-  const geolocatedCatchCount = useMemo(() => catches.filter((item) => catchCoordinates(item, spots)).length, [catches, spots])
-  const filteredSpots = useMemo(() => {
-    const term = spotSearch.trim().toLowerCase()
-    if (!term) return spots
-
-    return spots.filter((spot) => [
-      spot.name,
-      spot.type,
-      spot.notes,
-      formatCoordinate(spot.latitude),
-      formatCoordinate(spot.longitude),
-    ].filter(Boolean).join(' ').toLowerCase().includes(term))
-  }, [spots, spotSearch])
-
-  const hasExistingPhoto = Boolean(
-    editingSpot && !removeExistingPhoto && (editingSpot.photoPath || editingSpot.photoLocalKey || editingSpot.photoUrl),
-  )
-
-  useEffect(() => () => {
-    if (photoPreview) URL.revokeObjectURL(photoPreview)
-  }, [photoPreview])
-
-  useEffect(() => {
-    if (!mapNodeRef.current || mapRef.current) return
-
-    const map = L.map(mapNodeRef.current, { zoomControl: true, attributionControl: true }).setView(center, 12)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map)
-
-    spotLayerRef.current = L.layerGroup().addTo(map)
-    catchLayerRef.current = L.layerGroup().addTo(map)
-    map.on('click', (event) => setDraftPoint({ latitude: event.latlng.lat, longitude: event.latlng.lng }))
-    mapRef.current = map
-    setTimeout(() => map.invalidateSize(), 0)
-
-    return () => {
-      map.remove()
-      mapRef.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    if (mapRef.current) mapRef.current.setView(center, Math.max(mapRef.current.getZoom(), 12), { animate: true })
-  }, [center])
-
-  useEffect(() => {
-    const layer = spotLayerRef.current
-    if (!layer) return
-    layer.clearLayers()
-
-    spots.forEach((spot) => {
-      if (!Number.isFinite(Number(spot.latitude)) || !Number.isFinite(Number(spot.longitude))) return
-      const marker = L.circleMarker([spot.latitude, spot.longitude], {
-        radius: 8,
-        weight: 3,
-        color: '#d8f6ed',
-        fillColor: '#50bda3',
-        fillOpacity: 0.95,
-      })
-      marker.bindPopup(
-        `<strong>${escapeHtml(spot.name)}</strong><br>` +
-        `${escapeHtml(spot.type || 'spot')}` +
-        `${spot.notes ? `<br>${escapeHtml(spot.notes)}` : ''}` +
-        `${spot.photoPath || spot.photoLocalKey ? '<br>📷 Foto disponibile' : ''}`,
-      )
-      marker.addTo(layer)
-    })
-  }, [spots])
-
-  useEffect(() => {
-    const layer = catchLayerRef.current
-    if (!layer) return
-    layer.clearLayers()
-
-    catches.forEach((item) => {
-      const coordinates = catchCoordinates(item, spots)
-      if (!coordinates) return
-      const marker = L.circleMarker([coordinates.latitude, coordinates.longitude], {
-        radius: 6,
-        weight: 2,
-        color: '#fff2c7',
-        fillColor: '#f0b45c',
-        fillOpacity: 0.95,
-      })
-      const date = item.caughtAt ? new Date(item.caughtAt).toLocaleDateString('it-IT') : ''
-      const detail = [date, item.lure, item.weight ? `${item.weight} kg` : ''].filter(Boolean).join(' · ')
-      marker.bindPopup(
-        `<strong>🐟 ${escapeHtml(item.species)}</strong>` +
-        `${detail ? `<br>${escapeHtml(detail)}` : ''}` +
-        `${item.locationLabel ? `<br>${escapeHtml(item.locationLabel)}` : ''}`,
-      )
-      marker.addTo(layer)
-    })
-  }, [catches, spots])
-
-  useEffect(() => {
-    if (!mapRef.current) return
-    if (draftLayerRef.current) {
-      draftLayerRef.current.remove()
-      draftLayerRef.current = null
-    }
-    if (!draftPoint) return
-    draftLayerRef.current = L.circleMarker([draftPoint.latitude, draftPoint.longitude], {
-      radius: 10,
-      weight: 3,
-      color: '#f5d98b',
-      fillColor: '#f5d98b',
-      fillOpacity: 0.45,
-    }).addTo(mapRef.current)
-  }, [draftPoint])
-
-  function useCurrentLocation() {
-    setDraftPoint({ latitude: Number(location.latitude), longitude: Number(location.longitude) })
-    if (mapRef.current) mapRef.current.setView(center, 15, { animate: true })
-  }
-
-  function clearPhoto() {
-    setPhotoBlob(null)
-    setPhotoInfo(null)
-    setPhotoStatus('')
-    setPhotoPreview('')
-  }
-
-  function resetEditor() {
-    setEditingId(null)
-    setDraftPoint(null)
-    setForm(EMPTY_FORM)
-    setRemoveExistingPhoto(false)
-    clearPhoto()
-  }
-
-  function startEdit(spot) {
-    clearPhoto()
-    setEditingId(spot.id)
-    setDraftPoint({ latitude: Number(spot.latitude), longitude: Number(spot.longitude) })
-    setForm({
-      name: spot.name || '',
-      type: spot.type || 'altro',
-      notes: spot.notes || '',
-      isPrivate: spot.isPrivate !== false,
-    })
-    setRemoveExistingPhoto(false)
-    setPhotoStatus(spot.photoPath || spot.photoLocalKey || spot.photoUrl ? 'La foto attuale resta invariata finché non la sostituisci o rimuovi.' : '')
-    if (mapRef.current) mapRef.current.setView([Number(spot.latitude), Number(spot.longitude)], Math.max(mapRef.current.getZoom(), 15), { animate: true })
-    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: 'start' }))
-  }
-
-  function removeStoredPhoto() {
-    clearPhoto()
-    setRemoveExistingPhoto(true)
-    setPhotoStatus('La foto attuale verrà rimossa quando salvi le modifiche.')
-  }
-
-  async function selectPhoto(event) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-
-    setCompressingPhoto(true)
-    setPhotoStatus('Ottimizzo la foto sul dispositivo…')
-    try {
-      const result = await compressSpotPhoto(file)
-      setPhotoBlob(result.blob)
-      setPhotoInfo(result)
-      setPhotoPreview(URL.createObjectURL(result.blob))
-      setRemoveExistingPhoto(false)
-      setPhotoStatus(`Foto pronta · ${formatPhotoBytes(result.originalBytes)} → ${formatPhotoBytes(result.compressedBytes)}.`)
-    } catch (error) {
-      clearPhoto()
-      setPhotoStatus(error?.message || 'Non riesco a preparare questa foto.')
-    } finally {
-      setCompressingPhoto(false)
-    }
-  }
-
-  async function submit(event) {
-    event.preventDefault()
-    if (!draftPoint || !form.name.trim() || saving || compressingPhoto) return
-
-    const spotId = editingId || crypto.randomUUID()
-    const payload = {
-      id: spotId,
-      ...draftPoint,
-      name: form.name.trim(),
-      type: form.type,
-      notes: form.notes.trim(),
-      isPrivate: form.isPrivate,
-      photoBlob,
-      photoLocalKey: editingSpot?.photoLocalKey || '',
-      photoPath: editingSpot?.photoPath || '',
-      photoUrl: editingSpot?.photoUrl || '',
-      removePhoto: removeExistingPhoto,
-    }
-
-    const success = await onSaveSpot(payload)
-    if (success === false) return
-    resetEditor()
-  }
-
-  async function deleteSpot(spot) {
-    await onDeleteSpot(spot)
-    if (editingId === spot.id) resetEditor()
-  }
-
-  return (
-    <>
-      <section className="page-intro compact">
-        <div>
-          <div className="eyebrow">Mappa reale · OpenStreetMap</div>
-          <h1>Spot e catture</h1>
-          <p>
-            Tocca la mappa per scegliere un punto oppure usa il GPS. Gli spot sono privati per impostazione predefinita.
-            {cloudEnabled ? ' Sono sincronizzati con il tuo account XFish.' : ' In modalità ospite restano su questo dispositivo.'}
-          </p>
-        </div>
-        <button className="secondary-button" onClick={onLocate}><LocateFixed size={18} /> Aggiorna GPS</button>
-      </section>
-
-      {status && <div className="status-banner">{status}</div>}
-
-      <div className="map-legend" aria-label="Legenda mappa">
-        <span><i className="legend-dot spot" /> Spot {spots.length}</span>
-        <span><i className="legend-dot catch" /> Catture {geolocatedCatchCount}</span>
-      </div>
-
-      <div className="spot-map-layout">
-        <section className="section-block spot-map-card">
-          <div className="spot-map-toolbar">
-            <div><strong>{locationLabel}</strong><span>{formatCoordinate(location.latitude)}, {formatCoordinate(location.longitude)}</span></div>
-            <button type="button" className="secondary-button" onClick={useCurrentLocation}><MapPin size={17} /> Usa questo punto</button>
-          </div>
-          <div ref={mapNodeRef} className="spot-map-canvas" aria-label="Mappa interattiva degli spot e delle catture di pesca" />
-        </section>
-
-        <aside className="section-block spot-editor" ref={editorRef}>
-          <div className="section-title-row">
-            <h2>{editingId ? 'Modifica spot' : 'Nuovo spot'}</h2>
-            {editingId ? (
-              <button type="button" className="spot-editor-cancel" onClick={resetEditor}><X size={15} /> Annulla</button>
-            ) : (
-              <span className="muted-label">{draftPoint ? 'Punto selezionato' : 'Tocca la mappa'}</span>
-            )}
-          </div>
-
-          <form className="spot-form" onSubmit={submit}>
-            <label>Nome<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="es. Scogliera del pontile" required /></label>
-            <label>Tipo<select value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}>{SPOT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label>Note<textarea rows="3" value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Accesso, fondale, esche efficaci…" /></label>
-
-            <section className="spot-photo-editor">
-              <div className="spot-photo-editor-title"><ImagePlus size={18} /><div><strong>Foto dello spot</strong><span>Facoltativa · compressa automaticamente sotto 512 KB</span></div></div>
-              {photoPreview ? (
-                <div className="spot-photo-preview">
-                  <img src={photoPreview} alt="Anteprima spot" />
-                  <button type="button" onClick={clearPhoto} aria-label="Annulla nuova foto"><X size={17} /></button>
-                </div>
-              ) : hasExistingPhoto ? (
-                <div className="spot-existing-photo">
-                  <SpotPhoto spot={editingSpot} />
-                  <button type="button" className="secondary-button" onClick={removeStoredPhoto}><Trash2 size={16} /> Rimuovi foto</button>
-                </div>
-              ) : (
-                <label className="spot-photo-picker">
-                  <ImagePlus size={18} /> {compressingPhoto ? 'Ottimizzazione…' : editingId ? 'Sostituisci / aggiungi foto' : 'Aggiungi foto'}
-                  <input type="file" accept="image/*" capture="environment" onChange={selectPhoto} disabled={compressingPhoto || saving} />
-                </label>
-              )}
-              {photoInfo && <small>{photoInfo.width}×{photoInfo.height}px · {formatPhotoBytes(photoInfo.compressedBytes)}</small>}
-              {photoStatus && <small>{photoStatus}</small>}
-            </section>
-
-            <label className="spot-private-toggle"><input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm((current) => ({ ...current, isPrivate: event.target.checked }))} /><span>Spot privato</span></label>
-            <div className="spot-coordinate-box"><span>Coordinate</span><strong>{draftPoint ? `${formatCoordinate(draftPoint.latitude)}, ${formatCoordinate(draftPoint.longitude)}` : 'Nessun punto selezionato'}</strong></div>
-            <button className="primary-button full-width" type="submit" disabled={!draftPoint || !form.name.trim() || saving || compressingPhoto}>
-              {editingId ? <Pencil size={18} /> : <Plus size={18} />}
-              {saving ? 'Salvataggio…' : editingId ? 'Salva modifiche' : 'Salva spot'}
-            </button>
-          </form>
-        </aside>
-      </div>
-
-      <section className="section-block spot-list-card">
-        <div className="section-title-row">
-          <h2>I miei spot</h2>
-          <span className="muted-label">{spotSearch.trim() ? `${filteredSpots.length}/${spots.length}` : spots.length}</span>
-        </div>
-        {spots.length > 0 && (
-          <label className="spot-search">
-            <Search size={17} />
-            <input
-              type="search"
-              value={spotSearch}
-              onChange={(event) => setSpotSearch(event.target.value)}
-              placeholder="Cerca nome, tipo, note o coordinate…"
-              aria-label="Cerca tra i miei spot"
-            />
-          </label>
-        )}
-        {spots.length === 0 ? (
-          <div className="spot-empty">Nessuno spot salvato. Tocca la mappa per aggiungere il primo.</div>
-        ) : filteredSpots.length === 0 ? (
-          <div className="spot-empty">Nessuno spot corrisponde alla ricerca.</div>
-        ) : (
-          <div className="spot-list">
-            {filteredSpots.map((spot) => (
-              <article key={spot.id} className="spot-row">
-                <div className="spot-row-icon"><MapPin size={18} /></div>
-                <div>
-                  <strong>{spot.name}</strong>
-                  <SpotPhoto spot={spot} />
-                  <span>{spot.type} · {formatCoordinate(spot.latitude)}, {formatCoordinate(spot.longitude)}</span>
-                  {spot.notes && <small>{spot.notes}</small>}
-                </div>
-                <div className="spot-row-actions">
-                  <button type="button" className="spot-edit" onClick={() => startEdit(spot)} aria-label={`Modifica ${spot.name}`}><Pencil size={17} /></button>
-                  <button type="button" className="spot-delete" onClick={() => deleteSpot(spot)} aria-label={`Elimina ${spot.name}`}><Trash2 size={17} /></button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {geolocatedCatchCount > 0 && (
-        <section className="section-block map-catch-summary">
-          <Fish size={20} />
-          <div><strong>{geolocatedCatchCount} catture sulla mappa</strong><span>Le catture con GPS o spot associato vengono mostrate con marker dorati.</span></div>
-        </section>
-      )}
-    </>
-  )
+  return <>
+    <section className="page-intro compact"><div><div className="eyebrow">Mappa reale · OpenStreetMap</div><h1>Spot e catture</h1><p>Scegli la mappa privata, globale o di un gruppo. Gli spot altrui restano in sola lettura.</p></div><button className="secondary-button" onClick={onLocate}><LocateFixed size={18}/> Aggiorna GPS</button></section>
+    {(status||scopeStatus)&&<div className="status-banner">{scopeStatus||status}</div>}
+    {cloudEnabled&&<section className="map-scope-bar"><button className={scope==='private'?'active':''} onClick={()=>setScope('private')}>Privata</button><button className={scope==='global'?'active':''} onClick={()=>setScope('global')}>Globale</button><button className={scope==='group'?'active':''} onClick={()=>setScope('group')} disabled={!groups.length}>Gruppo</button>{scope==='group'&&<select value={scopeGroupId} onChange={(e)=>setScopeGroupId(e.target.value)}><option value="">Seleziona gruppo</option>{groups.map((g)=><option key={g.id} value={g.id}>{g.name}</option>)}</select>}</section>}
+    <div className="map-legend"><span><i className="legend-dot spot"/> Spot {currentSpots.length}</span>{scope==='private'&&<span><i className="legend-dot catch"/> Catture {geolocatedCatchCount}</span>}</div>
+    <div className="spot-map-layout"><section className="section-block spot-map-card"><div className="spot-map-toolbar"><div><strong>{locationLabel}</strong><span>{formatCoordinate(location.latitude)}, {formatCoordinate(location.longitude)}</span></div><button type="button" className="secondary-button" onClick={()=>setDraftPoint({latitude:Number(location.latitude),longitude:Number(location.longitude)})}><MapPin size={17}/> Usa questo punto</button></div><div ref={mapNodeRef} className="spot-map-canvas"/></section>
+      {scope==='private'&&<aside className="section-block spot-editor" ref={editorRef}><div className="section-title-row"><h2>{editingId?'Modifica spot':'Nuovo spot'}</h2>{editingId&&<button type="button" className="spot-editor-cancel" onClick={resetEditor}><X size={15}/> Annulla</button>}</div><form className="spot-form" onSubmit={submit}><label>Nome<input value={form.name} onChange={(e)=>setForm((c)=>({...c,name:e.target.value}))} required/></label><label>Tipo<select value={form.type} onChange={(e)=>setForm((c)=>({...c,type:e.target.value}))}>{SPOT_TYPES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>Note<textarea rows="3" value={form.notes} onChange={(e)=>setForm((c)=>({...c,notes:e.target.value}))}/></label><VisibilityFields userId={userId} value={form.visibility} groupId={form.groupId} onChange={(visibility,groupId)=>setForm((c)=>({...c,visibility,groupId,isPrivate:visibility==='private'}))} disabled={!cloudEnabled}/><section className="spot-photo-editor"><div className="spot-photo-editor-title"><ImagePlus size={18}/><div><strong>Foto dello spot</strong><span>Facoltativa · max 512 KB</span></div></div>{photoPreview?<div className="spot-photo-preview"><img src={photoPreview} alt="Anteprima spot"/><button type="button" onClick={clearPhoto}><X size={17}/></button></div>:hasExistingPhoto?<div className="spot-existing-photo"><SpotPhoto spot={editingSpot}/><button type="button" className="secondary-button" onClick={()=>{clearPhoto();setRemoveExistingPhoto(true)}}><Trash2 size={16}/> Rimuovi foto</button></div>:<label className="spot-photo-picker"><ImagePlus size={18}/> {compressingPhoto?'Ottimizzazione…':'Aggiungi foto'}<input type="file" accept="image/*" capture="environment" onChange={selectPhoto}/></label>}{photoInfo&&<small>{photoInfo.width}×{photoInfo.height}px · {formatPhotoBytes(photoInfo.compressedBytes)}</small>}{photoStatus&&<small>{photoStatus}</small>}</section><div className="spot-coordinate-box"><span>Coordinate</span><strong>{draftPoint?`${formatCoordinate(draftPoint.latitude)}, ${formatCoordinate(draftPoint.longitude)}`:'Nessun punto selezionato'}</strong></div><button className="primary-button full-width" disabled={!draftPoint||!form.name.trim()||saving||(form.visibility==='group'&&!form.groupId)}>{editingId?<Pencil size={18}/>:<Plus size={18}/>} {saving?'Salvataggio…':editingId?'Salva modifiche':'Salva spot'}</button></form></aside>}
+    </div>
+    <section className="section-block spot-list-card"><div className="section-title-row"><h2>{scope==='private'?'I miei spot':scope==='global'?'Spot globali':'Spot del gruppo'}</h2><span className="muted-label">{filteredSpots.length}</span></div>{currentSpots.length>0&&<label className="spot-search"><Search size={17}/><input type="search" value={spotSearch} onChange={(e)=>setSpotSearch(e.target.value)} placeholder="Cerca nome, tipo, note o coordinate…"/></label>}<div className="spot-list">{filteredSpots.map((spot)=>{const own=!spot.ownerId||spot.ownerId===userId;const canFavorite=cloudEnabled&&['private','global'].includes(spot.visibility||'private');const favorite=favoriteIds.includes(spot.id);return <article key={spot.id} className="spot-row"><div className="spot-row-icon"><MapPin size={18}/></div><div><strong>{spot.name}</strong><SpotPhoto spot={spot}/><span>{spot.type} · {spot.visibility||'private'} · {formatCoordinate(spot.latitude)}, {formatCoordinate(spot.longitude)}</span>{spot.notes&&<small>{spot.notes}</small>}</div><div className="spot-row-actions">{canFavorite&&<button type="button" className={favorite?'spot-favorite active':'spot-favorite'} onClick={()=>toggleFavorite(spot)} aria-label="Preferito"><Star size={17}/></button>}{own&&scope==='private'&&<><button type="button" className="spot-edit" onClick={()=>startEdit(spot)}><Pencil size={17}/></button><button type="button" className="spot-delete" onClick={()=>onDeleteSpot(spot)}><Trash2 size={17}/></button></>}</div></article>})}</div>{!filteredSpots.length&&<div className="spot-empty">Nessuno spot da mostrare.</div>}</section>
+    {geolocatedCatchCount>0&&scope==='private'&&<section className="section-block map-catch-summary"><Fish size={20}/><div><strong>{geolocatedCatchCount} catture sulla mappa</strong><span>Marker dorati per le catture geolocalizzate.</span></div></section>}
+  </>
 }
