@@ -18,11 +18,12 @@ import {
 import AuthPanel from './components/AuthPanel'
 import CatchEntryModal from './components/CatchEntryModal'
 import CatchPhoto from './components/CatchPhoto'
+import CatchSpotPrompt from './components/CatchSpotPrompt'
 import LiveForecastView from './components/LiveForecastView'
 import { DEFAULT_LOCATION, isInItaly, nearestPreset } from './config/locations'
 import { useAuth } from './hooks/useAuth'
 import { useFishingForecast } from './hooks/useFishingForecast'
-import { createRemoteCatch, deleteRemoteCatch, loadRemoteCatches, updateRemoteCatch } from './lib/catches'
+import { createRemoteCatch, deleteRemoteCatch, linkRemoteCatchToSpot, loadRemoteCatches, updateRemoteCatch } from './lib/catches'
 import { createRemoteGear, deleteRemoteGear, loadRemoteGear, updateRemoteGear } from './lib/gear'
 import { deleteLocalCatchPhoto, saveLocalCatchPhoto } from './lib/photos'
 import { deleteLocalSpotPhoto, saveLocalSpotPhoto } from './lib/spotPhotos'
@@ -272,6 +273,8 @@ function App() {
   const [activeView, setActiveView] = useState('forecast')
   const [catchModalOpen, setCatchModalOpen] = useState(false)
   const [editingCatch, setEditingCatch] = useState(null)
+  const [pendingCatchSpot, setPendingCatchSpot] = useState(null)
+  const [savingCatchSpot, setSavingCatchSpot] = useState(false)
   const [savingCatch, setSavingCatch] = useState(false)
   const [savingSpot, setSavingSpot] = useState(false)
   const [savingGear, setSavingGear] = useState(false)
@@ -430,6 +433,11 @@ function App() {
     setSavingCatch(true)
     setSyncStatus('')
     const existing = catches.find((candidate) => candidate.id === item.id) || null
+    const offerSpotAfterSave = !existing
+      && !item.spotId
+      && Number.isFinite(Number(item.latitude))
+      && Number.isFinite(Number(item.longitude))
+    let savedCatch = null
 
     try {
       if (user) {
@@ -437,6 +445,7 @@ function App() {
           ? await updateRemoteCatch(user.id, item)
           : await createRemoteCatch(user.id, item)
         const { photoCleanupPending = false, ...saved } = remote
+        savedCatch = saved
         setCatches((current) => existing
           ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
           : [saved, ...current])
@@ -466,6 +475,7 @@ function App() {
           photoUrl: '',
           synced: false,
         }
+        savedCatch = saved
         setCatches((current) => existing
           ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
           : [saved, ...current])
@@ -474,6 +484,7 @@ function App() {
           : photoLocalKey ? 'Cattura e foto salvate su questo dispositivo.' : 'Cattura salvata su questo dispositivo.')
       }
       closeCatchModal()
+      if (offerSpotAfterSave && savedCatch) setPendingCatchSpot(savedCatch)
       setActiveView('journal')
     } catch (error) {
       setSyncStatus(error?.message || 'Impossibile salvare la cattura.')
@@ -523,6 +534,7 @@ function App() {
         } else {
           setSpotStatus(spot.photoBlob ? 'Spot e foto salvati nel cloud.' : 'Spot salvato nel cloud.')
         }
+        return saved
       } else {
         const { photoBlob, removePhoto, ...localSpot } = spot
         const id = spot.id || crypto.randomUUID()
@@ -554,13 +566,53 @@ function App() {
         setSpotStatus(existing
           ? photoBlob || removePhoto ? 'Spot e foto aggiornati su questo dispositivo.' : 'Spot aggiornato su questo dispositivo.'
           : photoLocalKey ? 'Spot e foto salvati su questo dispositivo.' : 'Spot salvato su questo dispositivo.')
+        return saved
       }
-      return true
     } catch (error) {
       setSpotStatus(error?.message || 'Impossibile salvare lo spot.')
       return false
     } finally {
       setSavingSpot(false)
+    }
+  }
+
+  async function saveCatchLocationAsSpot(spotDraft) {
+    if (!pendingCatchSpot || savingCatchSpot) return
+    setSavingCatchSpot(true)
+    setSyncStatus('Salvataggio spot e collegamento alla cattura…')
+
+    try {
+      const savedSpot = await saveSpot(spotDraft)
+      if (savedSpot === false) {
+        setSyncStatus('La cattura resta salvata, ma non è stato possibile creare lo spot.')
+        return
+      }
+
+      let linkedCatch
+      if (user) {
+        linkedCatch = await linkRemoteCatchToSpot(user.id, pendingCatchSpot, savedSpot)
+      } else {
+        linkedCatch = {
+          ...pendingCatchSpot,
+          spotId: savedSpot.id,
+          latitude: Number(savedSpot.latitude),
+          longitude: Number(savedSpot.longitude),
+          locationLabel: savedSpot.name,
+        }
+      }
+
+      setCatches((current) => {
+        const next = current.map((item) => item.id === linkedCatch.id ? linkedCatch : item)
+        if (!user) saveLocalState('xfish:catches', next)
+        return next
+      })
+      setPendingCatchSpot(null)
+      setSyncStatus(`Spot “${savedSpot.name}” salvato e collegato alla cattura.`)
+    } catch (error) {
+      setPendingCatchSpot(null)
+      setSyncStatus(`Lo spot è stato creato, ma non è stato possibile collegarlo automaticamente alla cattura: ${error?.message || 'errore di sincronizzazione'}`)
+    } finally {
+      setSavingCatchSpot(false)
     }
   }
 
@@ -649,6 +701,7 @@ function App() {
     setCatches([])
     setSpots([])
     setGear([])
+    setPendingCatchSpot(null)
     closeCatchModal()
     setActiveView('forecast')
   }
@@ -785,6 +838,15 @@ function App() {
           activeLocation={forecastLocation}
           activeLocationLabel={locationLabel}
           initialItem={editingCatch}
+        />
+      )}
+
+      {pendingCatchSpot && (
+        <CatchSpotPrompt
+          item={pendingCatchSpot}
+          saving={savingCatchSpot}
+          onDismiss={() => setPendingCatchSpot(null)}
+          onSave={saveCatchLocationAsSpot}
         />
       )}
     </div>
