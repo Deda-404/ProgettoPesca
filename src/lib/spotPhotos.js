@@ -11,12 +11,13 @@ const LOCAL_STORE = 'spot-photos'
 export const compressSpotPhoto = compressCatchPhoto
 export { formatPhotoBytes }
 
-export async function uploadSpotPhoto(userId, spotId, blob) {
+export async function uploadSpotPhoto(userId, spotId, blob, { versioned = false } = {}) {
   if (!supabase || !userId || !spotId || !blob) throw new Error('Cloud foto spot non disponibile.')
   if (blob.size > SPOT_PHOTO_HARD_LIMIT) throw new Error('La foto compressa supera il limite XFish di 512 KB.')
 
   const extension = blob.type === 'image/jpeg' ? 'jpg' : 'webp'
-  const path = `${userId}/${spotId}.${extension}`
+  const suffix = versioned ? `-${crypto.randomUUID()}` : ''
+  const path = `${userId}/${spotId}${suffix}.${extension}`
   const { error } = await supabase.storage
     .from(SPOT_PHOTO_BUCKET)
     .upload(path, blob, {

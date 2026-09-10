@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Fish, ImagePlus, LocateFixed, MapPin, Plus, Search, Trash2, X } from 'lucide-react'
+import { Fish, ImagePlus, LocateFixed, MapPin, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import SpotPhoto from './SpotPhoto'
-import { compressSpotPhoto, deleteLocalSpotPhoto, formatPhotoBytes, saveLocalSpotPhoto } from '../lib/spotPhotos'
+import { compressSpotPhoto, formatPhotoBytes } from '../lib/spotPhotos'
 import './SpotMapView.css'
 
 const SPOT_TYPES = [
@@ -14,6 +14,8 @@ const SPOT_TYPES = [
   ['barca', 'Barca'],
   ['altro', 'Altro'],
 ]
+
+const EMPTY_FORM = { name: '', type: 'spiaggia', notes: '', isPrivate: true }
 
 function formatCoordinate(value) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(5) : '—'
@@ -59,8 +61,11 @@ export default function SpotMapView({
   const spotLayerRef = useRef(null)
   const catchLayerRef = useRef(null)
   const draftLayerRef = useRef(null)
+  const editorRef = useRef(null)
   const [draftPoint, setDraftPoint] = useState(null)
-  const [form, setForm] = useState({ name: '', type: 'spiaggia', notes: '', isPrivate: true })
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [editingId, setEditingId] = useState(null)
+  const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false)
   const [photoBlob, setPhotoBlob] = useState(null)
   const [photoInfo, setPhotoInfo] = useState(null)
   const [photoPreview, setPhotoPreview] = useState('')
@@ -69,6 +74,7 @@ export default function SpotMapView({
   const [spotSearch, setSpotSearch] = useState('')
 
   const center = useMemo(() => [Number(location.latitude), Number(location.longitude)], [location.latitude, location.longitude])
+  const editingSpot = useMemo(() => spots.find((spot) => spot.id === editingId) || null, [editingId, spots])
   const geolocatedCatchCount = useMemo(() => catches.filter((item) => catchCoordinates(item, spots)).length, [catches, spots])
   const filteredSpots = useMemo(() => {
     const term = spotSearch.trim().toLowerCase()
@@ -82,6 +88,10 @@ export default function SpotMapView({
       formatCoordinate(spot.longitude),
     ].filter(Boolean).join(' ').toLowerCase().includes(term))
   }, [spots, spotSearch])
+
+  const hasExistingPhoto = Boolean(
+    editingSpot && !removeExistingPhoto && (editingSpot.photoPath || editingSpot.photoLocalKey || editingSpot.photoUrl),
+  )
 
   useEffect(() => () => {
     if (photoPreview) URL.revokeObjectURL(photoPreview)
@@ -190,6 +200,36 @@ export default function SpotMapView({
     setPhotoPreview('')
   }
 
+  function resetEditor() {
+    setEditingId(null)
+    setDraftPoint(null)
+    setForm(EMPTY_FORM)
+    setRemoveExistingPhoto(false)
+    clearPhoto()
+  }
+
+  function startEdit(spot) {
+    clearPhoto()
+    setEditingId(spot.id)
+    setDraftPoint({ latitude: Number(spot.latitude), longitude: Number(spot.longitude) })
+    setForm({
+      name: spot.name || '',
+      type: spot.type || 'altro',
+      notes: spot.notes || '',
+      isPrivate: spot.isPrivate !== false,
+    })
+    setRemoveExistingPhoto(false)
+    setPhotoStatus(spot.photoPath || spot.photoLocalKey || spot.photoUrl ? 'La foto attuale resta invariata finché non la sostituisci o rimuovi.' : '')
+    if (mapRef.current) mapRef.current.setView([Number(spot.latitude), Number(spot.longitude)], Math.max(mapRef.current.getZoom(), 15), { animate: true })
+    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: 'start' }))
+  }
+
+  function removeStoredPhoto() {
+    clearPhoto()
+    setRemoveExistingPhoto(true)
+    setPhotoStatus('La foto attuale verrà rimossa quando salvi le modifiche.')
+  }
+
   async function selectPhoto(event) {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -202,6 +242,7 @@ export default function SpotMapView({
       setPhotoBlob(result.blob)
       setPhotoInfo(result)
       setPhotoPreview(URL.createObjectURL(result.blob))
+      setRemoveExistingPhoto(false)
       setPhotoStatus(`Foto pronta · ${formatPhotoBytes(result.originalBytes)} → ${formatPhotoBytes(result.compressedBytes)}.`)
     } catch (error) {
       clearPhoto()
@@ -215,47 +256,29 @@ export default function SpotMapView({
     event.preventDefault()
     if (!draftPoint || !form.name.trim() || saving || compressingPhoto) return
 
-    const spotId = crypto.randomUUID()
-    let localPhotoKey = ''
-
-    try {
-      if (!cloudEnabled && photoBlob) localPhotoKey = await saveLocalSpotPhoto(spotId, photoBlob)
-
-      const payload = {
-        id: spotId,
-        ...draftPoint,
-        name: form.name.trim(),
-        type: form.type,
-        notes: form.notes.trim(),
-        isPrivate: form.isPrivate,
-        photoLocalKey: localPhotoKey,
-        photoPath: '',
-        photoUrl: '',
-        ...(cloudEnabled ? { photoBlob } : {}),
-      }
-
-      const success = await onSaveSpot(payload)
-      if (success === false) {
-        if (localPhotoKey) await deleteLocalSpotPhoto(localPhotoKey)
-        return
-      }
-
-      setForm({ name: '', type: 'spiaggia', notes: '', isPrivate: true })
-      setDraftPoint(null)
-      clearPhoto()
-    } catch (error) {
-      if (localPhotoKey) {
-        try { await deleteLocalSpotPhoto(localPhotoKey) } catch { /* pulizia best-effort */ }
-      }
-      setPhotoStatus(error?.message || 'Non riesco a salvare la foto dello spot.')
+    const spotId = editingId || crypto.randomUUID()
+    const payload = {
+      id: spotId,
+      ...draftPoint,
+      name: form.name.trim(),
+      type: form.type,
+      notes: form.notes.trim(),
+      isPrivate: form.isPrivate,
+      photoBlob,
+      photoLocalKey: editingSpot?.photoLocalKey || '',
+      photoPath: editingSpot?.photoPath || '',
+      photoUrl: editingSpot?.photoUrl || '',
+      removePhoto: removeExistingPhoto,
     }
+
+    const success = await onSaveSpot(payload)
+    if (success === false) return
+    resetEditor()
   }
 
   async function deleteSpot(spot) {
-    if (!cloudEnabled && spot.photoLocalKey) {
-      try { await deleteLocalSpotPhoto(spot.photoLocalKey) } catch { /* il record resta comunque eliminabile */ }
-    }
     await onDeleteSpot(spot)
+    if (editingId === spot.id) resetEditor()
   }
 
   return (
@@ -288,10 +311,14 @@ export default function SpotMapView({
           <div ref={mapNodeRef} className="spot-map-canvas" aria-label="Mappa interattiva degli spot e delle catture di pesca" />
         </section>
 
-        <aside className="section-block spot-editor">
+        <aside className="section-block spot-editor" ref={editorRef}>
           <div className="section-title-row">
-            <h2>Nuovo spot</h2>
-            <span className="muted-label">{draftPoint ? 'Punto selezionato' : 'Tocca la mappa'}</span>
+            <h2>{editingId ? 'Modifica spot' : 'Nuovo spot'}</h2>
+            {editingId ? (
+              <button type="button" className="spot-editor-cancel" onClick={resetEditor}><X size={15} /> Annulla</button>
+            ) : (
+              <span className="muted-label">{draftPoint ? 'Punto selezionato' : 'Tocca la mappa'}</span>
+            )}
           </div>
 
           <form className="spot-form" onSubmit={submit}>
@@ -304,11 +331,16 @@ export default function SpotMapView({
               {photoPreview ? (
                 <div className="spot-photo-preview">
                   <img src={photoPreview} alt="Anteprima spot" />
-                  <button type="button" onClick={clearPhoto} aria-label="Rimuovi foto"><X size={17} /></button>
+                  <button type="button" onClick={clearPhoto} aria-label="Annulla nuova foto"><X size={17} /></button>
+                </div>
+              ) : hasExistingPhoto ? (
+                <div className="spot-existing-photo">
+                  <SpotPhoto spot={editingSpot} />
+                  <button type="button" className="secondary-button" onClick={removeStoredPhoto}><Trash2 size={16} /> Rimuovi foto</button>
                 </div>
               ) : (
                 <label className="spot-photo-picker">
-                  <ImagePlus size={18} /> {compressingPhoto ? 'Ottimizzazione…' : 'Aggiungi foto'}
+                  <ImagePlus size={18} /> {compressingPhoto ? 'Ottimizzazione…' : editingId ? 'Sostituisci / aggiungi foto' : 'Aggiungi foto'}
                   <input type="file" accept="image/*" capture="environment" onChange={selectPhoto} disabled={compressingPhoto || saving} />
                 </label>
               )}
@@ -319,7 +351,8 @@ export default function SpotMapView({
             <label className="spot-private-toggle"><input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm((current) => ({ ...current, isPrivate: event.target.checked }))} /><span>Spot privato</span></label>
             <div className="spot-coordinate-box"><span>Coordinate</span><strong>{draftPoint ? `${formatCoordinate(draftPoint.latitude)}, ${formatCoordinate(draftPoint.longitude)}` : 'Nessun punto selezionato'}</strong></div>
             <button className="primary-button full-width" type="submit" disabled={!draftPoint || !form.name.trim() || saving || compressingPhoto}>
-              <Plus size={18} /> {saving ? 'Salvataggio…' : 'Salva spot'}
+              {editingId ? <Pencil size={18} /> : <Plus size={18} />}
+              {saving ? 'Salvataggio…' : editingId ? 'Salva modifiche' : 'Salva spot'}
             </button>
           </form>
         </aside>
@@ -357,7 +390,10 @@ export default function SpotMapView({
                   <span>{spot.type} · {formatCoordinate(spot.latitude)}, {formatCoordinate(spot.longitude)}</span>
                   {spot.notes && <small>{spot.notes}</small>}
                 </div>
-                <button type="button" className="spot-delete" onClick={() => deleteSpot(spot)} aria-label={`Elimina ${spot.name}`}><Trash2 size={17} /></button>
+                <div className="spot-row-actions">
+                  <button type="button" className="spot-edit" onClick={() => startEdit(spot)} aria-label={`Modifica ${spot.name}`}><Pencil size={17} /></button>
+                  <button type="button" className="spot-delete" onClick={() => deleteSpot(spot)} aria-label={`Elimina ${spot.name}`}><Trash2 size={17} /></button>
+                </div>
               </article>
             ))}
           </div>
