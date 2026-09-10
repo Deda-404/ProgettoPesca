@@ -8,6 +8,12 @@ function localDateTimeValue(date = new Date()) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
 }
 
+function initialCaughtAt(item) {
+  if (!item?.caughtAt) return localDateTimeValue()
+  const date = new Date(item.caughtAt)
+  return Number.isNaN(date.getTime()) ? localDateTimeValue() : localDateTimeValue(date)
+}
+
 function formatCoordinate(value) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(5) : '—'
 }
@@ -25,25 +31,33 @@ export default function CatchEntryModal({
   gear = [],
   activeLocation,
   activeLocationLabel,
+  initialItem = null,
 }) {
+  const editing = Boolean(initialItem?.id)
+  const existingPhoto = Boolean(initialItem && (initialItem.photoPath || initialItem.photoLocalKey || initialItem.photoUrl))
+  const initialCoordinates = Number.isFinite(Number(initialItem?.latitude)) && Number.isFinite(Number(initialItem?.longitude))
+    ? { latitude: Number(initialItem.latitude), longitude: Number(initialItem.longitude) }
+    : null
+
   const [form, setForm] = useState({
-    species: '',
-    caughtAt: localDateTimeValue(),
-    lure: '',
-    weight: '',
-    length: '',
-    notes: '',
-    spotId: '',
+    species: initialItem?.species || '',
+    caughtAt: initialCaughtAt(initialItem),
+    lure: initialItem?.lure || '',
+    weight: initialItem?.weight ?? '',
+    length: initialItem?.length ?? '',
+    notes: initialItem?.notes || '',
+    spotId: initialItem?.spotId || '',
   })
-  const [gearIds, setGearIds] = useState([])
+  const [gearIds, setGearIds] = useState(initialItem?.gearIds ?? [])
   const [gearSearch, setGearSearch] = useState('')
-  const [coordinates, setCoordinates] = useState(null)
-  const [locationLabel, setLocationLabel] = useState('')
+  const [coordinates, setCoordinates] = useState(initialCoordinates)
+  const [locationLabel, setLocationLabel] = useState(initialItem?.locationLabel || '')
   const [locating, setLocating] = useState(false)
-  const [locationStatus, setLocationStatus] = useState('')
+  const [locationStatus, setLocationStatus] = useState(editing ? 'Puoi mantenere o aggiornare la posizione registrata.' : '')
   const [photo, setPhoto] = useState(null)
   const [photoPreview, setPhotoPreview] = useState('')
-  const [photoStatus, setPhotoStatus] = useState('')
+  const [photoStatus, setPhotoStatus] = useState(existingPhoto ? 'La foto esistente resta invariata finché non la sostituisci o rimuovi.' : '')
+  const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false)
   const [processingPhoto, setProcessingPhoto] = useState(false)
 
   useEffect(() => () => {
@@ -89,6 +103,7 @@ export default function CatchEntryModal({
       const nextPreview = URL.createObjectURL(compressed.blob)
       setPhoto(compressed)
       setPhotoPreview(nextPreview)
+      setRemoveExistingPhoto(false)
       setPhotoStatus(
         `${formatPhotoBytes(compressed.originalBytes)} → ${formatPhotoBytes(compressed.compressedBytes)} · ${compressed.width}×${compressed.height}px`,
       )
@@ -102,10 +117,19 @@ export default function CatchEntryModal({
     }
   }
 
-  function removePhoto() {
+  function removeSelectedPhoto() {
     setPhoto(null)
     setPhotoPreview('')
-    setPhotoStatus('Foto rimossa dalla cattura.')
+    setPhotoStatus(existingPhoto && !removeExistingPhoto
+      ? 'Nuova foto rimossa. La foto esistente verrà mantenuta.'
+      : 'Foto rimossa dalla cattura.')
+  }
+
+  function removeStoredPhoto() {
+    setPhoto(null)
+    setPhotoPreview('')
+    setRemoveExistingPhoto(true)
+    setPhotoStatus('La foto esistente verrà rimossa quando salvi le modifiche.')
   }
 
   function selectSpot(event) {
@@ -126,6 +150,7 @@ export default function CatchEntryModal({
 
   function useActiveLocation() {
     if (!activeLocation) return
+    setForm((current) => ({ ...current, spotId: '' }))
     setCoordinates({
       latitude: Number(activeLocation.latitude),
       longitude: Number(activeLocation.longitude),
@@ -144,11 +169,12 @@ export default function CatchEntryModal({
     setLocationStatus('Rilevamento GPS preciso…')
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setForm((current) => ({ ...current, spotId: '' }))
         setCoordinates({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         })
-        setLocationLabel(selectedSpot?.name || 'Posizione GPS')
+        setLocationLabel('Posizione GPS')
         setLocationStatus(`GPS acquisito · precisione circa ${Math.round(position.coords.accuracy)} m.`)
         setLocating(false)
       },
@@ -161,6 +187,7 @@ export default function CatchEntryModal({
   }
 
   function clearLocation() {
+    setForm((current) => ({ ...current, spotId: '' }))
     setCoordinates(null)
     setLocationLabel('')
     setLocationStatus('Posizione rimossa dalla cattura.')
@@ -172,11 +199,12 @@ export default function CatchEntryModal({
 
     onSave({
       ...form,
-      id: crypto.randomUUID(),
+      id: initialItem?.id || crypto.randomUUID(),
       species: form.species.trim(),
       spotId: form.spotId || null,
       gearIds,
       photoBlob: photo?.blob ?? null,
+      removePhoto: removeExistingPhoto,
       latitude: coordinates?.latitude ?? null,
       longitude: coordinates?.longitude ?? null,
       locationLabel: locationLabel || null,
@@ -187,7 +215,7 @@ export default function CatchEntryModal({
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="catch-modal catch-entry-modal" role="dialog" aria-modal="true" aria-labelledby="catch-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-header">
-          <div><div className="eyebrow">Diario XFish</div><h2 id="catch-title">Registra una cattura</h2></div>
+          <div><div className="eyebrow">Diario XFish</div><h2 id="catch-title">{editing ? 'Modifica cattura' : 'Registra una cattura'}</h2></div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Chiudi"><X /></button>
         </div>
 
@@ -209,12 +237,19 @@ export default function CatchEntryModal({
             {photoPreview ? (
               <div className="catch-photo-preview-wrap">
                 <img src={photoPreview} className="catch-photo-preview" alt="Anteprima cattura" />
-                <button type="button" className="catch-photo-remove" onClick={removePhoto}><Trash2 size={16} /> Rimuovi foto</button>
+                <button type="button" className="catch-photo-remove" onClick={removeSelectedPhoto}><Trash2 size={16} /> Rimuovi nuova foto</button>
               </div>
-            ) : (
+            ) : existingPhoto && !removeExistingPhoto ? (
+              <div className="catch-existing-photo-actions">
+                <span>Foto esistente presente</span>
+                <button type="button" className="catch-photo-remove" onClick={removeStoredPhoto}><Trash2 size={16} /> Rimuovi foto</button>
+              </div>
+            ) : null}
+
+            {!photoPreview && (
               <label className={`catch-photo-picker${processingPhoto ? ' disabled' : ''}`}>
                 <ImagePlus size={20} />
-                <span>{processingPhoto ? 'Compressione in corso…' : 'Scegli foto o scatta'}</span>
+                <span>{processingPhoto ? 'Compressione in corso…' : existingPhoto && !removeExistingPhoto ? 'Sostituisci foto' : 'Scegli foto o scatta'}</span>
                 <input type="file" accept="image/*" onChange={selectPhoto} disabled={processingPhoto || saving} />
               </label>
             )}
@@ -295,7 +330,9 @@ export default function CatchEntryModal({
           </section>
 
           <label>Note<textarea rows="3" value={form.notes} onChange={update('notes')} placeholder="Condizioni, recupero, osservazioni…" /></label>
-          <button className="primary-button full-width" type="submit" disabled={saving || locating || processingPhoto}>{saving ? 'Salvataggio…' : processingPhoto ? 'Ottimizzo foto…' : 'Salva cattura'}</button>
+          <button className="primary-button full-width" type="submit" disabled={saving || locating || processingPhoto}>
+            {saving ? 'Salvataggio…' : processingPhoto ? 'Ottimizzo foto…' : editing ? 'Salva modifiche' : 'Salva cattura'}
+          </button>
         </form>
       </section>
     </div>
