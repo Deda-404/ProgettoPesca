@@ -1,4 +1,5 @@
 import {
+  CircleHelp,
   CloudSun,
   Compass,
   Droplets,
@@ -14,6 +15,7 @@ import {
   Wind,
 } from 'lucide-react'
 import { COASTAL_PRESETS } from '../config/locations'
+import '../forecastInfo.css'
 
 function formatTime(value) {
   return value?.split('T')?.[1]?.slice(0, 5) || '—'
@@ -33,6 +35,15 @@ function scoreClass(score) {
   if (score >= 72) return 'good'
   if (score >= 50) return 'medium'
   return 'low'
+}
+
+function ForecastInfo({ children }) {
+  return (
+    <details className="forecast-info">
+      <summary><CircleHelp size={16} /> Info</summary>
+      <p>{children}</p>
+    </details>
+  )
 }
 
 export default function LiveForecastView({
@@ -111,6 +122,9 @@ export default function LiveForecastView({
               <p className="forecast-disclaimer">
                 L’indice combina condizioni meteo-marine, pressione, luna e variazione del livello marino: è un supporto alla scelta dello spot, non una garanzia di cattura.
               </p>
+              <ForecastInfo>
+                L’indice XFish va da 0 a 100 e serve a confrontare condizioni e finestre temporali. È un indicatore euristico: non sostituisce esperienza, sicurezza in mare o valutazione locale dello spot.
+              </ForecastInfo>
             </section>
 
             <section className="section-block current-summary">
@@ -126,6 +140,9 @@ export default function LiveForecastView({
                 <article><Gauge /><span>Pressione</span><strong>{formatNumber(current.pressure)} hPa</strong></article>
                 <article><Navigation /><span>Corrente</span><strong>{current.currentDirection} · {formatNumber(current.currentVelocity, 1)} km/h</strong></article>
               </div>
+              <ForecastInfo>
+                Temperatura aria e acqua sono espresse in °C; vento e corrente in km/h; altezza dell’onda in metri; pressione atmosferica in hPa. Direzione di vento, onda e corrente indica la provenienza o l’orientamento riportato dal modello.
+              </ForecastInfo>
             </section>
           </div>
 
@@ -150,6 +167,9 @@ export default function LiveForecastView({
               <div><span>Raffiche</span><strong>{formatNumber(current.windGusts)} km/h</strong><small>vento {current.windDirection}</small></div>
               <div><span>Livello mare</span><strong>{formatNumber(current.seaLevel, 2)} m</strong><small>rispetto al livello medio globale</small></div>
             </div>
+            <ForecastInfo>
+              Onda significativa e swell sono espresse in metri; il periodo in secondi indica il tempo tra le onde del modello. Le raffiche sono picchi di vento in km/h. Il livello mare è un valore modellato e non una misura locale certificata.
+            </ForecastInfo>
           </section>
 
           <section className="section-block astronomy-card">
@@ -167,6 +187,9 @@ export default function LiveForecastView({
               <div><span>Minore 1</span><strong>{astronomy.solunar.minor[0]}</strong></div>
               <div><span>Minore 2</span><strong>{astronomy.solunar.minor[1]}</strong></div>
             </div>
+            <ForecastInfo>
+              L’illuminazione lunare è mostrata in percentuale. Le finestre solunari di XFish sono stime ricavate da moonrise, moonset e transito lunare: sono un riferimento descrittivo, non una previsione certa dell’attività dei pesci.
+            </ForecastInfo>
           </section>
 
           <section className="section-block tide-card">
@@ -190,6 +213,9 @@ export default function LiveForecastView({
             <p className="forecast-note">
               Sul Tirreno e nel Mar Ligure l’escursione di marea è spesso contenuta. XFish usa il livello marino modellato, utile per leggere la tendenza di pesca ma non per la navigazione.
             </p>
+            <ForecastInfo>
+              XFish cerca massimi e minimi locali nella serie del livello marino modellato. I valori servono a leggere una tendenza: non sono tavole di marea ufficiali e non devono essere utilizzati per la navigazione o per decisioni di sicurezza.
+            </ForecastInfo>
           </section>
 
           <section className="section-block advice-card">
@@ -198,6 +224,9 @@ export default function LiveForecastView({
               <div className="eyebrow">Cosa provo oggi?</div>
               <h2>{forecast.advice.title}</h2>
               <p>{forecast.advice.text}</p>
+              <ForecastInfo>
+                Il suggerimento combina le condizioni già mostrate dalla dashboard con le regole dell’indice XFish. È un aiuto operativo per scegliere cosa provare, non identifica automaticamente specie presenti nello spot e non garantisce una cattura.
+              </ForecastInfo>
             </div>
           </section>
 
