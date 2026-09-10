@@ -88,6 +88,66 @@ export async function createRemoteSpot(userId, spot) {
   }
 }
 
+export async function updateRemoteSpot(userId, spot) {
+  if (!supabase || !userId) throw new Error('Cloud XFish non disponibile.')
+  if (!spot?.id) throw new Error('Spot non valido.')
+
+  const previousPhotoPath = spot.photoPath || ''
+  let nextPhotoPath = spot.removePhoto ? '' : previousPhotoPath
+  let uploadedPhotoPath = ''
+
+  try {
+    if (spot.photoBlob) {
+      uploadedPhotoPath = await uploadSpotPhoto(userId, spot.id, spot.photoBlob, { versioned: true })
+      nextPhotoPath = uploadedPhotoPath
+    }
+
+    const payload = {
+      name: spot.name.trim(),
+      latitude: Number(spot.latitude),
+      longitude: Number(spot.longitude),
+      spot_type: spot.type || 'altro',
+      notes: spot.notes?.trim() || null,
+      is_private: spot.isPrivate !== false,
+      photo_path: nextPhotoPath || null,
+    }
+
+    const { data, error } = await supabase
+      .from('fishing_spots')
+      .update(payload)
+      .eq('id', spot.id)
+      .eq('user_id', userId)
+      .select(spotSelect)
+      .single()
+
+    if (error) throw error
+
+    let signedUrls = new Map()
+    if (nextPhotoPath) {
+      try {
+        signedUrls = await signSpotPhotoPaths([nextPhotoPath])
+      } catch {
+        // Lo spot resta aggiornato; la foto verrà firmata al prossimo caricamento.
+      }
+    }
+
+    const saved = mapSpot(data, signedUrls)
+    if (previousPhotoPath && previousPhotoPath !== nextPhotoPath) {
+      try {
+        await removeSpotPhoto(previousPhotoPath)
+      } catch {
+        return { ...saved, photoCleanupPending: true }
+      }
+    }
+    return saved
+  } catch (error) {
+    if (uploadedPhotoPath) {
+      try { await removeSpotPhoto(uploadedPhotoPath) } catch { /* pulizia best-effort */ }
+    }
+    throw error
+  }
+}
+
 export async function deleteRemoteSpot(userId, spotOrId) {
   if (!supabase || !userId) throw new Error('Cloud XFish non disponibile.')
 
