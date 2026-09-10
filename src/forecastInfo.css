@@ -1,0 +1,44 @@
+.forecast-info {
+  margin-top: 14px;
+  border-top: 1px solid rgba(177, 224, 213, .1);
+  padding-top: 10px;
+}
+
+.forecast-info summary {
+  width: fit-content;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid rgba(177, 224, 213, .12);
+  border-radius: 12px;
+  background: #102220;
+  color: #b8d4ce;
+  font-weight: 800;
+  font-size: .82rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.forecast-info summary::-webkit-details-marker {
+  display: none;
+}
+
+.forecast-info summary:focus-visible {
+  outline: 2px solid #91ddcb;
+  outline-offset: 2px;
+}
+
+.forecast-info[open] summary {
+  color: #d9eee9;
+  border-color: rgba(145, 221, 203, .26);
+}
+
+.forecast-info p {
+  margin: 8px 0 0;
+  color: #91a8a4;
+  line-height: 1.55;
+  font-size: .82rem;
+  max-width: 72ch;
+}
