@@ -4,6 +4,18 @@ import App from './App'
 import './styles.css'
 import './forecast.css'
 import './catchGeo.css'
+import './guest.css'
+
+function syncGuestUiFromStorage() {
+  try {
+    const guestMode = JSON.parse(localStorage.getItem('xfish:guest-mode') || 'false') === true
+    document.documentElement.dataset.xfishGuest = guestMode ? 'true' : 'false'
+  } catch {
+    document.documentElement.dataset.xfishGuest = 'false'
+  }
+}
+
+syncGuestUiFromStorage()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
