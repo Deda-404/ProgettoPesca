@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   CircleHelp,
   CloudSun,
@@ -6,16 +7,33 @@ import {
   Fish,
   Gauge,
   LocateFixed,
+  MapPin,
   Moon,
   Navigation,
   Sunrise,
   Sunset,
   Thermometer,
+  Trash2,
   Waves,
   Wind,
 } from 'lucide-react'
 import { COASTAL_PRESETS } from '../config/locations'
+import { loadLocalState, saveLocalState } from '../lib/storage'
 import '../forecastInfo.css'
+import '../forecastPoints.css'
+
+const FORECAST_POINTS_KEY = 'xfish:forecast-points'
+
+function loadForecastPoints() {
+  const saved = loadLocalState(FORECAST_POINTS_KEY, [])
+  if (!Array.isArray(saved)) return []
+  return saved.filter((point) => (
+    point?.id
+    && point?.name
+    && Number.isFinite(Number(point.latitude))
+    && Number.isFinite(Number(point.longitude))
+  ))
+}
 
 function formatTime(value) {
   return value?.split('T')?.[1]?.slice(0, 5) || '—'
@@ -59,6 +77,52 @@ export default function LiveForecastView({
 }) {
   const current = forecast?.current
   const astronomy = forecast?.astronomy
+  const [savedPoints, setSavedPoints] = useState(loadForecastPoints)
+  const [pointName, setPointName] = useState('')
+  const [pointStatus, setPointStatus] = useState('')
+
+  function saveCurrentPoint(event) {
+    event.preventDefault()
+    const latitude = Number(location.latitude)
+    const longitude = Number(location.longitude)
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      setPointStatus('La posizione attiva non contiene coordinate valide.')
+      return
+    }
+
+    const duplicate = savedPoints.some((point) => (
+      Math.abs(Number(point.latitude) - latitude) < 0.000001
+      && Math.abs(Number(point.longitude) - longitude) < 0.000001
+    ))
+    if (duplicate) {
+      setPointStatus('Questo punto è già presente tra i punti salvati.')
+      return
+    }
+
+    const point = {
+      id: crypto.randomUUID(),
+      name: pointName.trim() || locationLabel || 'Punto GPS',
+      latitude,
+      longitude,
+    }
+    const next = [point, ...savedPoints]
+    setSavedPoints(next)
+    saveLocalState(FORECAST_POINTS_KEY, next)
+    setPointName('')
+    setPointStatus(`Punto “${point.name}” salvato su questo dispositivo.`)
+  }
+
+  function selectSavedPoint(point) {
+    onSelectPreset(point)
+    setPointStatus(`Previsioni spostate su “${point.name}”.`)
+  }
+
+  function deleteSavedPoint(point) {
+    const next = savedPoints.filter((candidate) => candidate.id !== point.id)
+    setSavedPoints(next)
+    saveLocalState(FORECAST_POINTS_KEY, next)
+    setPointStatus(`Punto “${point.name}” rimosso.`)
+  }
 
   return (
     <>
@@ -94,6 +158,43 @@ export default function LiveForecastView({
         ))}
       </div>
 
+      <section className="section-block forecast-points-card">
+        <div className="section-title-row">
+          <h2>Punti previsioni</h2>
+          <span className="muted-label">{savedPoints.length} salvati</span>
+        </div>
+        <form className="forecast-point-form" onSubmit={saveCurrentPoint}>
+          <input
+            value={pointName}
+            onChange={(event) => setPointName(event.target.value)}
+            placeholder={`Nome punto · ${locationLabel}`}
+            aria-label="Nome del punto previsioni"
+          />
+          <button className="secondary-button" type="submit"><MapPin size={17} /> Salva punto</button>
+        </form>
+        {savedPoints.length ? (
+          <div className="forecast-points-list">
+            {savedPoints.map((point) => (
+              <div className="forecast-point-row" key={point.id}>
+                <button className="forecast-point-select" type="button" onClick={() => selectSavedPoint(point)}>
+                  <Compass size={17} />
+                  <span>
+                    <strong>{point.name}</strong>
+                    <small>{Number(point.latitude).toFixed(4)}, {Number(point.longitude).toFixed(4)}</small>
+                  </span>
+                </button>
+                <button className="forecast-point-delete" type="button" onClick={() => deleteSavedPoint(point)} aria-label={`Rimuovi punto ${point.name}`}>
+                  <Trash2 size={17} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="forecast-points-empty">Usa il GPS o una località attiva, assegna un nome e salva il punto per richiamarlo rapidamente nelle prossime previsioni.</p>
+        )}
+      </section>
+
+      {pointStatus && <div className="status-banner">{pointStatus}</div>}
       {locationStatus && <div className="status-banner">{locationStatus}</div>}
       {error && <div className="status-banner forecast-error">{error}</div>}
 
