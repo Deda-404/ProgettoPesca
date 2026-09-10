@@ -1,0 +1,14 @@
+.catch-spot-prompt { width: min(100%, 520px); }
+.catch-spot-copy { margin: 0 0 14px; color: #91aaa4; font-size: .88rem; line-height: 1.5; }
+.catch-spot-coordinate { display: flex; align-items: center; gap: 9px; padding: 12px; border-radius: 13px; background: #071514; color: #b9e7dc; }
+.catch-spot-coordinate svg { flex: 0 0 auto; color: #83cfbd; }
+.catch-spot-coordinate strong { font-size: .84rem; overflow-wrap: anywhere; }
+.catch-spot-form { display: grid; gap: 12px; margin-top: 14px; }
+.catch-spot-form label { color: #a9bdb8; font-size: .8rem; font-weight: 700; }
+.catch-spot-form input, .catch-spot-form select { width: 100%; min-height: 46px; margin-top: 6px; padding: 11px 12px; border: 1px solid rgba(197,227,219,.11); border-radius: 13px; background: #071514; color: #f2f6f5; }
+.catch-spot-form small { color: #78938d; line-height: 1.4; }
+.catch-spot-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 9px; margin-top: 2px; }
+html[data-xfish-theme='light'] .catch-spot-copy, html[data-xfish-theme='light'] .catch-spot-form small { color: #607b84; }
+html[data-xfish-theme='light'] .catch-spot-coordinate, html[data-xfish-theme='light'] .catch-spot-form input, html[data-xfish-theme='light'] .catch-spot-form select { background: #fff; border-color: rgba(22,102,125,.15); color: #184b59; }
+html[data-xfish-theme='light'] .catch-spot-coordinate svg { color: #147d91; }
+@media (max-width: 430px) { .catch-spot-actions { grid-template-columns: 1fr; } }
