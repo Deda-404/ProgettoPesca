@@ -1,141 +1,287 @@
 # XFish
 
-XFish è una webapp/PWA mobile-first per previsioni di pesca, condizioni mare/meteo, spot personali, diario catture e attrezzatura. L'interfaccia è progettata prima di tutto per smartphone, mantenendo un layout dedicato anche su desktop.
+XFish è una webapp/PWA mobile-first per pescatori marittimi. Riunisce previsioni meteo-marine, indice pesca, spot GPS, diario catture, attrezzatura, montature, profilo e condivisione controllata degli spot/catture.
 
-## Area di utilizzo
+L'app è progettata prima di tutto per smartphone, ma mantiene un layout dedicato anche su desktop. L'area operativa è l'Italia, con priorità sulla costa Livorno–La Spezia e posizione predefinita Marina di Massa.
 
-XFish è pensata per l'intero territorio italiano, con priorità operativa sulla costa compresa tra Livorno e La Spezia.
+## Stato del progetto
 
-La posizione predefinita è Marina di Massa. Sono disponibili scorciatoie rapide per Livorno, Viareggio, Forte dei Marmi, Marina di Massa, Marina di Carrara, Lerici e La Spezia. Quando l'utente autorizza il GPS, le previsioni vengono ricalcolate sulle coordinate reali.
+La baseline XFish 1.0 implementa i requisiti MUST definiti nel documento prodotto che hanno specifiche complete. L'Ittiodex resta fuori da questa baseline perché i relativi requisiti funzionali sono ancora indicati come da definire; le funzionalità WOULD (gare, riconoscimento pesci, ricette, leaderboard sociali complete) restano roadmap futura.
 
 ## Vincolo di costo
 
-XFish deve restare utilizzabile sui piani gratuiti di Render e Supabase.
+XFish è progettata per restare utilizzabile con Render Static Site e Supabase senza introdurre automaticamente servizi/add-on a pagamento.
 
-Principi architetturali:
+Principi:
 
-- Render usato come hosting statico della PWA, senza server sempre acceso
-- un solo progetto Supabase per Auth, PostgreSQL e Storage
-- niente servizi/add-on a pagamento attivati automaticamente
-- niente polling o Realtime non necessari
-- Leaflet caricato in lazy loading soltanto all'apertura della mappa
-- inventario attrezzatura caricato dinamicamente soltanto quando viene aperto
-- foto compresse direttamente nel browser prima dell'upload
-- bucket foto privati, limite server-side di 512 KB per file
-- statistiche calcolate dal browser sui dati già caricati, senza API dedicate
-- query e trasferimenti dati mantenuti piccoli e paginati quando necessario
-- cache PWA e cache applicativa per ridurre richieste e banda
-
-Qualunque futura funzionalità che richieda un costo deve avere prima un'alternativa gratuita oppure una decisione esplicita.
+- hosting statico su Render;
+- un solo progetto Supabase per Auth, PostgreSQL, Storage, Edge Functions e Cron;
+- nessun server applicativo sempre acceso;
+- niente polling/Realtime non necessari;
+- Leaflet e sezioni pesanti caricati solo quando servono;
+- foto compresse nel browser prima dell'upload;
+- bucket privati con limite massimo 512 KB/file;
+- statistiche calcolate nel browser;
+- query limitate e dataset piccoli;
+- nessun segreto server-side esposto al bundle Vite.
 
 ## Stack
 
-- React + Vite
-- Supabase (Auth, PostgreSQL, Storage)
+- React 18 + Vite 6
+- Supabase Auth / PostgreSQL / Storage / Edge Functions / Cron
 - Render Static Site
-- PWA installabile su Android e desktop
-- Open-Meteo Weather API
-- Open-Meteo Marine API
+- Open-Meteo Weather + Marine API
 - OpenStreetMap + Leaflet
+- PWA installabile
+
+Le dipendenze dirette sono pin-nate a versioni esatte in `package.json`. Il repository non contiene un `package-lock.json` generato artificialmente: quando viene rigenerato deve provenire da una reale installazione npm e includere gli hash `integrity` effettivi.
+
+## Interfaccia e temi
+
+L'interfaccia è mobile-first, con navigazione dedicata su telefono e sidebar su desktop. Sono disponibili:
+
+- tema scuro ispirato al mare profondo;
+- tema chiaro con palette blu/azzurro/bianco;
+- selezione tema dal Profilo e persistenza locale;
+- micro-interazioni marine sui pulsanti;
+- rispetto di `prefers-reduced-motion` per ridurre le animazioni quando richiesto dal sistema.
+
+## Autenticazione e modalità ospite
+
+XFish usa Supabase Auth email/password.
+
+- registrazione e login;
+- sessione persistente;
+- reinvio email di conferma;
+- gestione degli errori di email non confermata;
+- logout;
+- modalità ospite limitata alle sole previsioni meteo-marine.
+
+Il client usa `window.location.origin` come redirect di conferma, quindi in produzione il redirect è `https://xfish.onrender.com/`.
+
+### Configurazione Auth da verificare in Supabase Dashboard
+
+La configurazione URL/SMTP è esterna al codice e non è modificabile dai connettori usati dal progetto. Prima di considerare chiuso il collaudo email, in **Authentication → URL Configuration** verificare:
+
+- Site URL: `https://xfish.onrender.com`
+- Redirect URL di produzione: `https://xfish.onrender.com/`
+
+Per produzione va inoltre configurato un SMTP adeguato e deve restare attiva l'opzione **Confirm Email**. Se il template email usa un redirect personalizzato, il template deve usare il valore di redirect configurato da Supabase.
+
+L'advisor Supabase segnala ancora **Leaked Password Protection Disabled**: è una configurazione Auth Dashboard e va abilitata se disponibile sul piano/configurazione scelta.
 
 ## Previsioni meteo-marine
 
-La dashboard usa dati reali e separa correttamente terra e mare:
+La dashboard usa dati reali Open-Meteo e separa correttamente dati terrestri e marini.
 
-- meteo: griglia terrestre più adatta alle coordinate richieste
-- mare: griglia marina più vicina (`cell_selection=sea`)
-- fuso orario: `Europe/Rome`
-- previsione: 7 giorni
+Dati principali:
 
-Dati principali: temperatura, umidità, pressione, vento e raffiche, precipitazioni, onda, swell, temperatura superficiale del mare, corrente marina, livello marino modellato, alba/tramonto, moonrise/moonset e fase lunare.
+- temperatura, umidità, pressione;
+- vento e raffiche;
+- precipitazioni;
+- onda e swell;
+- temperatura superficiale del mare;
+- corrente marina;
+- livello marino modellato;
+- alba/tramonto;
+- moonrise/moonset e fase lunare.
+
+Sono presenti pulsanti Info per spiegare gli indicatori, un indice XFish 0–100 e indicazioni operative/specie target basate sulle condizioni disponibili. L'indice è euristico e non rappresenta una garanzia di cattura.
+
+L'utente può salvare, selezionare e rimuovere punti GPS di interesse per le previsioni senza generare traffico Supabase aggiuntivo.
 
 ### Maree / livello marino
 
-XFish usa `sea_level_height_msl` della Marine API. Per le prossime 48 ore richiede la serie a 15 minuti quando disponibile e individua massimi/minimi locali. Il dato è utile come indicazione per la pesca, ma non deve essere usato per la navigazione.
+XFish usa `sea_level_height_msl` come indicazione per la pesca. Il dato non deve essere usato per la navigazione.
 
-### Finestre solunari
-
-Le finestre minori sono centrate su moonrise e moonset. Le finestre maggiori sono una stima del transito lunare ottenuta da moonrise/moonset. Sono indicatori euristici, non una garanzia di cattura.
-
-### Indice XFish
-
-L'indice 0–100 combina vento, raffiche, onda, precipitazioni, stabilità della pressione, fase lunare e variazione del livello marino. Serve a confrontare giornate e finestre temporali.
-
-## Mappa, spot e catture
+## Mappa e spot
 
 La mappa usa OpenStreetMap/Leaflet e supporta:
 
-- GPS e centro mappa sulla località attiva
-- spot privati con nome, tipo, note, coordinate e foto opzionale
-- salvataggio cloud per utenti autenticati e locale per ospiti
-- marker separati per spot e catture
-- associazione della cattura a uno spot già salvato
-- GPS preciso della singola cattura
-- apertura di una cattura del diario direttamente sulla mappa
+- creazione, modifica ed eliminazione spot;
+- nome, coordinate GPS, tipo, note e foto;
+- ricerca spot;
+- scope mappa **privata**, **globale** o di uno **specifico gruppo**;
+- visibilità spot `private`, `global`, `group`;
+- selezione del gruppo quando la visibilità è `group`;
+- preferiti per spot privati/globali;
+- marker separati per spot e catture personali;
+- spot altrui in sola lettura;
+- foto degli spot condivisi leggibili solo se la policy di visibilità permette di vedere lo spot.
 
-La mappa viene caricata dinamicamente solo quando viene aperta, così il bundle iniziale resta più leggero su smartphone e si riduce il traffico.
+Gli utenti autenticati usano Supabase; la modalità locale resta privata.
 
-## Attrezzatura
+## Diario catture
 
-L'inventario personale supporta canne, mulinelli, fili/trecciati, esche e artificiali, terminali, accessori, abbigliamento e categoria libera “altro”. Per ogni elemento sono disponibili marca, modello, specifiche e note, oltre a creazione, modifica, eliminazione, ricerca e filtri.
+Il Diario personale supporta CRUD completo per i campi attualmente definiti:
 
-Con account autenticato i dati vengono sincronizzati nella tabella `gear` di Supabase; in modalità ospite restano sul dispositivo. La query cloud è limitata ai 250 elementi più recenti e la sezione viene caricata in lazy loading.
+- specie;
+- data e ora con default locale;
+- esca/artificiale;
+- tecnica di pesca;
+- peso e lunghezza;
+- note;
+- foto;
+- spot salvato oppure coordinate GPS;
+- più elementi di attrezzatura associati;
+- visibilità `private`, `global`, `group` con selezione gruppo.
 
-### Attrezzatura associata alle catture
+Ulteriori funzioni:
 
-Ogni cattura può essere collegata a più elementi dell'inventario, per esempio canna, mulinello, trecciato e artificiale. La relazione molti-a-molti è salvata nella tabella `catch_gear` e permette statistiche per specie, spot e attrezzatura senza duplicare dati.
+- ricerca tra le proprie catture anche per tecnica, spot, data, esca, note e attrezzatura;
+- foto apribile a tutto schermo;
+- apertura della cattura sulla mappa;
+- se una nuova cattura ha coordinate ma nessuno spot, XFish propone di salvare quel punto come nuovo spot e collega automaticamente la cattura al nuovo spot.
 
-## Foto delle catture
+Il Diario resta intenzionalmente l'archivio personale dell'utente; la condivisione viene applicata a livello RLS e nelle viste mappa previste.
 
-Le foto sono progettate specificamente per il piano gratuito Supabase:
+## Attrezzatura e montature
 
-- una foto facoltativa per cattura
-- compressione e ridimensionamento direttamente sul telefono/PC prima dell'upload
-- obiettivo circa 360 KB, limite massimo XFish 512 KB
-- WebP quando supportato, con fallback JPEG
-- bucket Supabase `catch-photos` privato
-- percorso isolato per utente: `<user-id>/<catch-id>.<ext>`
-- accesso alle immagini cloud tramite URL firmate temporanee
-- RLS su lettura, upload ed eliminazione
-- eliminazione della foto quando viene eliminata la cattura
-- modalità ospite: Blob conservato in IndexedDB, senza riempire `localStorage`
-- nessuna Image Transformation o funzione server a pagamento
+L'inventario supporta CRUD, ricerca e ordinamento per categoria di:
 
-## Foto degli spot
+- canne;
+- mulinelli;
+- fili/trecciati;
+- esche/artificiali;
+- terminali;
+- accessori;
+- abbigliamento;
+- altro.
 
-Gli spot usano la stessa pipeline di ottimizzazione delle catture:
+Per ogni elemento sono disponibili marca, modello, specifiche e note.
 
-- una foto facoltativa per spot
-- compressione sul dispositivo con lo stesso limite massimo di 512 KB
-- bucket privato Supabase `spot-photos`
-- percorsi isolati per utente: `<user-id>/<spot-id>.<ext>`
-- URL firmate temporanee e caricamento lazy
-- RLS su lettura, upload ed eliminazione
-- eliminazione della foto insieme allo spot
-- modalità ospite con Blob in IndexedDB separato da `localStorage`
-- nessuna dipendenza, Edge Function o servizio a pagamento aggiuntivo
+La sezione **Configurazioni / montature** supporta CRUD di setup composti almeno da:
 
-Questa scelta mantiene private le immagini e riduce Storage ed egress sui piani Free.
+- canna;
+- mulinello;
+- lenza madre;
+- terminale/leader;
+- nome e note.
 
-## Statistiche personali
+Le catture possono inoltre essere collegate a più elementi dell'inventario tramite `catch_gear`.
 
-La sezione Statistiche XFish viene caricata in lazy loading e calcola tutto nel browser sui dati già disponibili nel diario. Non aggiunge query dedicate, servizi esterni o costi.
+## Profilo
 
-Mostra:
+Il Profilo mostra e gestisce:
 
-- numero totale di catture e specie diverse
-- catture geolocalizzate e numero di spot/località utilizzati
-- percentuale operativa di catture con attrezzatura e foto
-- peso medio, peso totale noto e lunghezza media
-- specie più catturate
-- spot più produttivi
-- attrezzatura più usata
-- esche/artificiali più ricorrenti
-- distribuzione delle catture per mese
-- distribuzione per fascia oraria
-- evidenza automatica del mese e della fascia oraria più frequenti
+- nome utente;
+- foto profilo;
+- email dell'account;
+- stato cloud;
+- conteggi spot/catture/attrezzatura;
+- spazio totale occupato dalle foto nei bucket XFish;
+- tema chiaro/scuro;
+- logout.
 
-Le statistiche sono descrittive: riflettono soltanto lo storico personale registrato e non implicano causalità né garanzie di cattura.
+Nome utente e foto profilo sono modificabili. La foto usa il bucket privato `profile-photos` e la stessa pipeline di compressione client-side delle altre immagini.
+
+## Gruppi
+
+La baseline include la fondazione minima necessaria alla visibilità `group`:
+
+- creazione/eliminazione di un gruppo posseduto dall'utente;
+- membership del proprietario automatica;
+- selezione dei gruppi nei form spot/cattura;
+- RLS basata sulla membership.
+
+Inviti, gestione sociale completa delle ciurme/gilde, gare ed eventi appartengono alla roadmap WOULD e non sono parte della baseline 1.0.
+
+## Amministrazione
+
+I due account amministrativi indicati nella documentazione di progetto sono marcati `is_admin=true` direttamente nel database. I loro indirizzi email **non sono hardcodati nel repository**.
+
+Il Profilo amministratore mostra un pannello con:
+
+- numero di profili;
+- utenti attivi negli ultimi 5 minuti in base a `last_seen_at`;
+- ultimo accesso osservato;
+- stato admin;
+- visibilità delle richieste di cancellazione tramite i dati profilo disponibili.
+
+L'autorizzazione amministrativa usa `profiles.is_admin`; non usa `user_metadata` del JWT.
+
+## Cancellazione account a 30 giorni
+
+L'utente può:
+
+1. richiedere la cancellazione;
+2. vedere la data di scadenza (+30 giorni);
+3. annullare la richiesta prima della scadenza.
+
+La cancellazione effettiva è automatizzata con:
+
+- flag `profiles.deletion_requested_at`;
+- Supabase Cron `xfish-purge-deleted-accounts`, una volta al giorno;
+- Edge Function `purge-deleted-accounts`;
+- segreto cron memorizzato in Supabase Vault;
+- nel repository è presente soltanto l'hash SHA-256 del segreto, mai il valore in chiaro;
+- pulizia foto tramite Storage API prima di `auth.admin.deleteUser`, evitando oggetti Storage orfani;
+- cancellazione delle righe applicative tramite FK `on delete cascade`.
+
+La funzione non accetta un ID utente da cancellare dal chiamante: seleziona esclusivamente profili la cui richiesta è scaduta da almeno 30 giorni.
+
+## Foto e Storage
+
+Bucket privati:
+
+- `catch-photos`
+- `spot-photos`
+- `profile-photos`
+
+Regole principali:
+
+- compressione client-side;
+- limite server-side 512 KB;
+- WebP/JPEG;
+- URL firmate temporanee;
+- percorsi separati per utente;
+- eliminazione tramite Storage API;
+- RLS owner-scoped oppure visibility-scoped per le foto di spot condivisi;
+- modalità locale con IndexedDB dove applicabile.
+
+## Statistiche
+
+La pagina Statistiche è stata mantenuta sostanzialmente invariata, come richiesto dalla specifica prodotto. Continua a calcolare nel browser statistiche descrittive basate sul diario senza API dedicate.
+
+## Database Supabase
+
+Tabelle principali:
+
+- `profiles`
+- `fishing_spots`
+- `catches`
+- `gear`
+- `catch_gear`
+- `fishing_groups`
+- `group_members`
+- `spot_favorites`
+- `gear_setups`
+
+Tutte le tabelle esposte che contengono dati utente hanno Row Level Security. Gli helper interni necessari per evitare ricorsione RLS sono nello schema `private`, non esposto come normale API RPC.
+
+`profiles.is_admin` non è aggiornabile dal normale client: il ruolo `authenticated` può aggiornare soltanto le colonne profilo consentite.
+
+### Migration history
+
+La cartella `supabase/migrations` è stata riconciliata con `supabase_migrations.schema_migrations`. Non riscrivere migration già applicate.
+
+Per nuove modifiche:
+
+1. creare una nuova migration tramite Supabase CLI quando disponibile;
+2. applicare/verificare;
+3. eseguire gli advisor;
+4. assicurarsi che timestamp/nome presenti in Git coincidano con la history remota.
+
+Vedi anche `docs/SUPABASE_MIGRATIONS.md`.
+
+## Security advisor
+
+Dopo l'hardening rimangono due classi di warning note:
+
+- `my_photo_storage_bytes()` è intenzionalmente un RPC `SECURITY DEFINER` owner-scoped, senza argomento user-id, necessario per contare gli oggetti Storage dell'utente corrente;
+- Leaked Password Protection è disattivata e richiede configurazione nel pannello Auth Supabase.
+
+Gli helper RLS interni per admin, membership e foto condivise sono stati spostati nello schema `private`.
 
 ## Avvio locale
 
@@ -145,56 +291,85 @@ cp .env.example .env
 npm run dev
 ```
 
-Compila `.env` con:
+Variabili:
 
 ```env
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
-## Database Supabase
+Non inserire mai `service_role` o secret key in variabili `VITE_*`.
 
-Lo schema applicativo comprende:
+## Build e test
 
-- `profiles`
-- `fishing_spots`
-- `catches`
-- `gear`
-- `catch_gear`
+```bash
+npm test
+npm run build
+```
 
-Le tabelle usano Row Level Security: ogni utente autenticato può leggere e modificare soltanto i propri dati. Catture e spot possono memorizzare anche il percorso privato della rispettiva foto.
-
-Lo Storage usa i bucket privati `catch-photos` e `spot-photos`, con policy che limitano ogni utente alla propria cartella. Gli indici duplicati non necessari sono stati rimossi; restano quelli utili alle query reali e alle statistiche future.
-
-## Autenticazione
-
-Sono disponibili registrazione/login email-password, sessione persistente, modalità ospite locale, sincronizzazione cloud e logout. Il client gestisce redirect e reinvio della conferma email; prima di un'apertura pubblica resta da configurare un SMTP adatto e i Site/Redirect URL definitivi in Supabase.
+`npm run build` esegue prima la suite Node e poi `vite build`.
 
 ## Deploy Render
 
-Il file `render.yaml` è predisposto per una Static Site XFish. Variabili richieste:
+Servizio canonico:
+
+- Static Site `xfish`
+- branch `main`
+- URL: `https://xfish.onrender.com`
+- build: `npm install && npm run build`
+- publish: `dist`
+
+Variabili Render richieste:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 
+### Nota auto-deploy
+
+Il servizio dichiara `autoDeploy=yes`, ma durante il collaudo i merge GitHub non hanno generato automaticamente nuovi deploy; i deploy canonici sono stati quindi riallineati manualmente tramite API Render. Il connettore disponibile non espone la riconnessione del repository a un Git provider autenticato.
+
+Per ripristinare l'auto-deploy nativo va verificata nel Dashboard Render l'integrazione GitHub del servizio esistente. Non creare un secondo servizio soltanto per aggirare questo problema.
+
 ## Strategia Git
 
-- `main`: versione stabile
-- `feature/...`: sviluppo di una singola funzionalità
-- `fix/...`: correzioni
-- merge su `main` soltanto tramite Pull Request revisionata manualmente
+- `main`: versione stabile;
+- branch `feature/...`, `fix/...`, `chore/...` per modifiche isolate o pacchetti di dominio;
+- integrazione tramite Pull Request;
+- ogni merge rilevante viene verificato con il build canonico Render quando non è disponibile una CI dedicata.
 
-## Roadmap
+## Roadmap / milestone
 
-1. fondazione mobile-first / PWA ✅
-2. autenticazione e sincronizzazione Supabase ✅
-3. previsioni meteo-marine e indice pesca ✅
-4. mappa reale con OpenStreetMap/Leaflet ✅
-5. catture geolocalizzate e collegamento diario-mappa ✅
-6. gestione attrezzatura completa ✅
-7. associazione attrezzatura alle catture ✅
-8. foto private delle catture con compressione client-side ✅
-9. foto degli spot con la stessa pipeline ottimizzata ✅
-10. statistiche personali per specie, spot e attrezzatura ✅
+Completato nella baseline XFish 1.0:
 
-Il completamento di questa roadmap corrisponde alla milestone funzionale XFish 1.0.0. I blocchi successivi verranno gestiti come roadmap 2.x, mantenendo il vincolo dei piani Free.
+1. mobile-first / PWA ✅
+2. autenticazione + modalità ospite ✅
+3. previsioni meteo-marine + Info + indice pesca ✅
+4. punti GPS salvabili nelle previsioni ✅
+5. tema Light/Dark + motion marino ✅
+6. CRUD spot + ricerca + foto ✅
+7. mappe privata/globale/gruppo ✅
+8. preferiti spot ✅
+9. CRUD catture + ricerca + foto fullscreen ✅
+10. tecnica e visibilità catture ✅
+11. workflow GPS cattura → nuovo spot ✅
+12. CRUD attrezzatura + ordine categoria ✅
+13. CRUD montature/configurazioni ✅
+14. profilo modificabile + avatar + spazio foto ✅
+15. gruppi minimi per la visibilità ✅
+16. ruoli/pannello amministratore ✅
+17. richiesta/annullamento e purge account a 30 giorni ✅
+18. migration history e RLS hardening ✅
+
+Da configurare/verificare fuori dal codice prima del go-live pubblico:
+
+- Supabase Auth Site URL / Redirect URL / SMTP / Confirm Email;
+- Leaked Password Protection, se disponibile;
+- integrazione GitHub autenticata su Render per auto-deploy.
+
+Roadmap futura non inclusa nella baseline:
+
+- Ittiodex: requisiti ancora da definire;
+- inviti e gestione sociale completa dei gruppi;
+- eventi/gare e leaderboard;
+- riconoscimento fotografico dei pesci;
+- schede specie estese e ricette.
