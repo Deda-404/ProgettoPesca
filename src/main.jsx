@@ -5,6 +5,7 @@ import './styles.css'
 import './forecast.css'
 import './catchGeo.css'
 import './guest.css'
+import './marineMotion.css'
 
 function syncGuestUiFromStorage() {
   try {
