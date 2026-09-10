@@ -36,5 +36,29 @@ export function useAuth() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!supabase || !user?.id) return undefined
+
+    const touchPresence = () => {
+      supabase
+        .from('profiles')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', user.id)
+        .then(() => {})
+    }
+
+    touchPresence()
+    const interval = window.setInterval(touchPresence, 4 * 60 * 1000)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') touchPresence()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [user?.id])
+
   return { user, loading }
 }
