@@ -6,6 +6,7 @@ import './forecast.css'
 import './catchGeo.css'
 import './guest.css'
 import './marineMotion.css'
+import './theme.css'
 
 function syncGuestUiFromStorage() {
   try {
@@ -16,7 +17,17 @@ function syncGuestUiFromStorage() {
   }
 }
 
+function syncThemeUiFromStorage() {
+  try {
+    const savedTheme = JSON.parse(localStorage.getItem('xfish:theme') || '"dark"')
+    document.documentElement.dataset.xfishTheme = savedTheme === 'light' ? 'light' : 'dark'
+  } catch {
+    document.documentElement.dataset.xfishTheme = 'dark'
+  }
+}
+
 syncGuestUiFromStorage()
+syncThemeUiFromStorage()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
