@@ -251,6 +251,35 @@ export async function updateRemoteCatch(userId, item) {
   }
 }
 
+export async function linkRemoteCatchToSpot(userId, item, spot) {
+  if (!supabase || !userId || !item?.id || !spot?.id) throw new Error('Cattura o spot non validi.')
+
+  const latitude = Number(spot.latitude)
+  const longitude = Number(spot.longitude)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new Error('Lo spot non contiene coordinate valide.')
+
+  const { error } = await supabase
+    .from('catches')
+    .update({
+      spot_id: spot.id,
+      latitude,
+      longitude,
+      location_label: spot.name?.trim() || item.locationLabel || null,
+    })
+    .eq('id', item.id)
+    .eq('user_id', userId)
+
+  if (error) throw error
+
+  return {
+    ...item,
+    spotId: spot.id,
+    latitude,
+    longitude,
+    locationLabel: spot.name?.trim() || item.locationLabel || '',
+  }
+}
+
 export async function deleteRemoteCatch(userId, item) {
   if (!supabase || !userId || !item?.id) throw new Error('Cattura non valida o cloud non disponibile.')
 
