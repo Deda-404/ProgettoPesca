@@ -13,6 +13,8 @@ const CATEGORIES = [
   ['altro', 'Altro'],
 ]
 
+const CATEGORY_ORDER = new Map(CATEGORIES.map(([id], index) => [id, index]))
+
 const EMPTY_FORM = {
   category: 'canna',
   brand: '',
@@ -23,6 +25,10 @@ const EMPTY_FORM = {
 
 function categoryLabel(value) {
   return CATEGORIES.find(([id]) => id === value)?.[1] || value || 'Altro'
+}
+
+function categoryRank(value) {
+  return CATEGORY_ORDER.get(value) ?? CATEGORIES.length
 }
 
 export default function GearInventoryView({
@@ -41,14 +47,16 @@ export default function GearInventoryView({
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return gear.filter((item) => {
-      const categoryMatch = filter === 'tutti' || item.category === filter
-      const text = [item.brand, item.model, item.specs, item.notes, categoryLabel(item.category)]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      return categoryMatch && (!term || text.includes(term))
-    })
+    return gear
+      .filter((item) => {
+        const categoryMatch = filter === 'tutti' || item.category === filter
+        const text = [item.brand, item.model, item.specs, item.notes, categoryLabel(item.category)]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        return categoryMatch && (!term || text.includes(term))
+      })
+      .sort((first, second) => categoryRank(first.category) - categoryRank(second.category))
   }, [gear, search, filter])
 
   const counts = useMemo(() => {
