@@ -8,6 +8,7 @@ import {
   MapPinned,
   Moon,
   NotebookTabs,
+  Pencil,
   Plus,
   Search,
   Settings,
@@ -21,7 +22,7 @@ import LiveForecastView from './components/LiveForecastView'
 import { DEFAULT_LOCATION, isInItaly, nearestPreset } from './config/locations'
 import { useAuth } from './hooks/useAuth'
 import { useFishingForecast } from './hooks/useFishingForecast'
-import { createRemoteCatch, deleteRemoteCatch, loadRemoteCatches } from './lib/catches'
+import { createRemoteCatch, deleteRemoteCatch, loadRemoteCatches, updateRemoteCatch } from './lib/catches'
 import { createRemoteGear, deleteRemoteGear, loadRemoteGear, updateRemoteGear } from './lib/gear'
 import { deleteLocalCatchPhoto, saveLocalCatchPhoto } from './lib/photos'
 import { deleteLocalSpotPhoto, saveLocalSpotPhoto } from './lib/spotPhotos'
@@ -46,7 +47,7 @@ function gearName(item) {
   return [item?.brand, item?.model].filter(Boolean).join(' ') || item?.category || ''
 }
 
-function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCatch, onOpenStats, cloudEnabled, syncStatus }) {
+function JournalView({ catches, spots, gear, onOpenCatch, onEditCatch, onOpenMap, onDeleteCatch, onOpenStats, cloudEnabled, syncStatus }) {
   const [search, setSearch] = useState('')
   const spotById = useMemo(() => new Map(spots.map((spot) => [spot.id, spot])), [spots])
   const gearById = useMemo(() => new Map(gear.map((item) => [item.id, item])), [gear])
@@ -153,6 +154,9 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCat
                   )}
                   {item.notes && <small>{item.notes}</small>}
                   <div className="catch-card-actions">
+                    <button type="button" className="catch-map-link" onClick={() => onEditCatch(item)}>
+                      <Pencil size={15} /> Modifica
+                    </button>
                     {location.hasCoordinates && (
                       <button type="button" className="catch-map-link" onClick={() => onOpenMap(item)}>
                         <MapPinned size={15} /> Vedi sulla mappa
@@ -267,6 +271,7 @@ function App() {
   const [theme, setTheme] = useState(() => loadLocalState('xfish:theme', 'dark') === 'light' ? 'light' : 'dark')
   const [activeView, setActiveView] = useState('forecast')
   const [catchModalOpen, setCatchModalOpen] = useState(false)
+  const [editingCatch, setEditingCatch] = useState(null)
   const [savingCatch, setSavingCatch] = useState(false)
   const [savingSpot, setSavingSpot] = useState(false)
   const [savingGear, setSavingGear] = useState(false)
@@ -406,19 +411,54 @@ function App() {
     )
   }
 
+  function openNewCatch() {
+    setEditingCatch(null)
+    setCatchModalOpen(true)
+  }
+
+  function openEditCatch(item) {
+    setEditingCatch(item)
+    setCatchModalOpen(true)
+  }
+
+  function closeCatchModal() {
+    setCatchModalOpen(false)
+    setEditingCatch(null)
+  }
+
   async function saveCatch(item) {
     setSavingCatch(true)
     setSyncStatus('')
+    const existing = catches.find((candidate) => candidate.id === item.id) || null
+
     try {
       if (user) {
-        const saved = await createRemoteCatch(user.id, item)
-        setCatches((current) => [saved, ...current])
-        setSyncStatus(item.photoBlob ? 'Cattura, foto e attrezzatura salvate nel cloud.' : 'Cattura e attrezzatura salvate nel cloud.')
+        const remote = existing
+          ? await updateRemoteCatch(user.id, item)
+          : await createRemoteCatch(user.id, item)
+        const { photoCleanupPending = false, ...saved } = remote
+        setCatches((current) => existing
+          ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+          : [saved, ...current])
+        if (existing) {
+          setSyncStatus(photoCleanupPending
+            ? 'Cattura aggiornata. La vecchia foto non più usata verrà ripulita in seguito.'
+            : item.photoBlob || item.removePhoto ? 'Cattura e foto aggiornate nel cloud.' : 'Cattura aggiornata nel cloud.')
+        } else {
+          setSyncStatus(item.photoBlob ? 'Cattura, foto e attrezzatura salvate nel cloud.' : 'Cattura e attrezzatura salvate nel cloud.')
+        }
       } else {
-        const { photoBlob, ...localItem } = item
-        let photoLocalKey = ''
+        const { photoBlob, removePhoto, ...localItem } = item
+        let photoLocalKey = existing?.photoLocalKey || ''
+
+        if (removePhoto && photoLocalKey) {
+          await deleteLocalCatchPhoto(photoLocalKey)
+          photoLocalKey = ''
+        }
         if (photoBlob) photoLocalKey = await saveLocalCatchPhoto(item.id, photoBlob)
+
         const saved = {
+          ...(existing || {}),
           ...localItem,
           gearIds: item.gearIds ?? [],
           photoLocalKey,
@@ -426,10 +466,14 @@ function App() {
           photoUrl: '',
           synced: false,
         }
-        setCatches((current) => [saved, ...current])
-        setSyncStatus(photoLocalKey ? 'Cattura e foto salvate su questo dispositivo.' : 'Cattura salvata su questo dispositivo.')
+        setCatches((current) => existing
+          ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+          : [saved, ...current])
+        setSyncStatus(existing
+          ? photoBlob || removePhoto ? 'Cattura e foto aggiornate su questo dispositivo.' : 'Cattura aggiornata su questo dispositivo.'
+          : photoLocalKey ? 'Cattura e foto salvate su questo dispositivo.' : 'Cattura salvata su questo dispositivo.')
       }
-      setCatchModalOpen(false)
+      closeCatchModal()
       setActiveView('journal')
     } catch (error) {
       setSyncStatus(error?.message || 'Impossibile salvare la cattura.')
@@ -605,6 +649,7 @@ function App() {
     setCatches([])
     setSpots([])
     setGear([])
+    closeCatchModal()
     setActiveView('forecast')
   }
 
@@ -635,7 +680,8 @@ function App() {
         catches={catches}
         spots={spots}
         gear={gear}
-        onOpenCatch={() => setCatchModalOpen(true)}
+        onOpenCatch={openNewCatch}
+        onEditCatch={openEditCatch}
         onOpenMap={openCatchOnMap}
         onDeleteCatch={deleteCatch}
         onOpenStats={() => setActiveView('stats')}
@@ -686,7 +732,7 @@ function App() {
         locationStatus={locationStatus}
         onLocate={locateUser}
         onSelectPreset={selectForecastLocation}
-        onOpenCatch={() => setCatchModalOpen(true)}
+        onOpenCatch={openNewCatch}
         forecast={forecast}
         loading={forecastLoading}
         error={forecastError}
@@ -723,7 +769,7 @@ function App() {
         <nav className="bottom-nav" aria-label="Navigazione mobile">
           <button className={activeView === 'forecast' ? 'active' : ''} onClick={() => setActiveView('forecast')}><Sun /><span>Previsioni</span></button>
           <button className={activeView === 'map' ? 'active' : ''} onClick={() => setActiveView('map')}><MapPinned /><span>Mappa</span></button>
-          <button className="add-button" onClick={() => setCatchModalOpen(true)} aria-label="Registra una cattura"><Plus /></button>
+          <button className="add-button" onClick={openNewCatch} aria-label="Registra una cattura"><Plus /></button>
           <button className={activeView === 'journal' || activeView === 'stats' ? 'active' : ''} onClick={() => setActiveView('journal')}><NotebookTabs /><span>Diario</span></button>
           <button className={activeView === 'gear' ? 'active' : ''} onClick={() => setActiveView('gear')}><Backpack /><span>Attrezzatura</span></button>
         </nav>
@@ -731,13 +777,14 @@ function App() {
 
       {catchModalOpen && (
         <CatchEntryModal
-          onClose={() => setCatchModalOpen(false)}
+          onClose={closeCatchModal}
           onSave={saveCatch}
           saving={savingCatch}
           spots={spots}
           gear={gear}
           activeLocation={forecastLocation}
           activeLocationLabel={locationLabel}
+          initialItem={editingCatch}
         />
       )}
     </div>

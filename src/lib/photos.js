@@ -104,12 +104,14 @@ export function formatPhotoBytes(bytes) {
   return `${Math.round(bytes / 1024)} KB`
 }
 
-export async function uploadCatchPhoto(userId, catchId, blob) {
+export async function uploadCatchPhoto(userId, catchId, blob, versionSuffix = '') {
   if (!supabase || !userId || !catchId || !blob) throw new Error('Cloud foto non disponibile.')
   if (blob.size > CATCH_PHOTO_HARD_LIMIT) throw new Error('La foto compressa supera il limite XFish di 512 KB.')
 
   const extension = blob.type === 'image/jpeg' ? 'jpg' : 'webp'
-  const path = `${userId}/${catchId}.${extension}`
+  const safeSuffix = String(versionSuffix || '').replace(/[^a-zA-Z0-9_-]/g, '')
+  const suffix = safeSuffix ? `-${safeSuffix}` : ''
+  const path = `${userId}/${catchId}${suffix}.${extension}`
   const { error } = await supabase.storage
     .from(CATCH_PHOTO_BUCKET)
     .upload(path, blob, {
