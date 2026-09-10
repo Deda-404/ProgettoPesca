@@ -6,6 +6,7 @@ import {
   LogOut,
   MapPin,
   MapPinned,
+  Moon,
   NotebookTabs,
   Plus,
   Search,
@@ -171,7 +172,7 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCat
   )
 }
 
-function ProfileView({ user, guestMode, onSignOut, onExitGuest, onOpenStats, locationLabel, catches, spots, gear }) {
+function ProfileView({ user, guestMode, onSignOut, onExitGuest, onOpenStats, locationLabel, catches, spots, gear, theme, onToggleTheme }) {
   const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ospite'
   const geolocatedCatches = catches.filter((item) => (
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))
@@ -179,6 +180,7 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, onOpenStats, loc
   const catchesWithGear = catches.filter((item) => (item.gearIds ?? []).length > 0).length
   const catchesWithPhotos = catches.filter((item) => item.photoPath || item.photoLocalKey || item.photoUrl).length
   const spotsWithPhotos = spots.filter((item) => item.photoPath || item.photoLocalKey || item.photoUrl).length
+  const lightTheme = theme === 'light'
 
   return (
     <>
@@ -188,6 +190,17 @@ function ProfileView({ user, guestMode, onSignOut, onExitGuest, onOpenStats, loc
           <h1>{displayName}</h1>
           <p>{user?.email || 'Stai usando XFish senza account.'}</p>
         </div>
+      </section>
+
+      <section className="section-block theme-card" aria-label="Tema XFish">
+        <div>
+          <strong>Tema</strong>
+          <span>{lightTheme ? 'Chiaro · colori marini di superficie' : 'Scuro · colori del mare profondo'}</span>
+        </div>
+        <button className="secondary-button theme-toggle" type="button" onClick={onToggleTheme} aria-label={lightTheme ? 'Attiva tema scuro' : 'Attiva tema chiaro'}>
+          {lightTheme ? <Moon size={18} /> : <Sun size={18} />}
+          {lightTheme ? 'Tema scuro' : 'Tema chiaro'}
+        </button>
       </section>
 
       <section className="section-block connection-list">
@@ -251,6 +264,7 @@ function SectionLoadingScreen({ icon: Icon, title, text }) {
 function App() {
   const { user, loading: authLoading } = useAuth()
   const [guestMode, setGuestMode] = useState(() => loadLocalState('xfish:guest-mode', false))
+  const [theme, setTheme] = useState(() => loadLocalState('xfish:theme', 'dark') === 'light' ? 'light' : 'dark')
   const [activeView, setActiveView] = useState('forecast')
   const [catchModalOpen, setCatchModalOpen] = useState(false)
   const [savingCatch, setSavingCatch] = useState(false)
@@ -268,6 +282,10 @@ function App() {
 
   useEffect(() => saveLocalState('xfish:guest-mode', guestMode), [guestMode])
   useEffect(() => saveLocalState('xfish:forecast-location', forecastLocation), [forecastLocation])
+  useEffect(() => {
+    saveLocalState('xfish:theme', theme)
+    document.documentElement.dataset.xfishTheme = theme
+  }, [theme])
 
   useEffect(() => {
     if (user) setGuestMode(false)
@@ -630,6 +648,8 @@ function App() {
         catches={catches}
         spots={spots}
         gear={gear}
+        theme={theme}
+        onToggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')}
       />
     )
   } else {
