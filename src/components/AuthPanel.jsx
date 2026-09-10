@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Fish, LockKeyhole, Mail, UserRound } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import '../auth.css'
@@ -6,6 +6,11 @@ import '../auth.css'
 function confirmationRedirectUrl() {
   if (typeof window === 'undefined') return undefined
   return `${window.location.origin}/`
+}
+
+function setGuestUi(enabled) {
+  if (typeof document === 'undefined') return
+  document.documentElement.dataset.xfishGuest = enabled ? 'true' : 'false'
 }
 
 function initialAuthError() {
@@ -46,7 +51,16 @@ export default function AuthPanel({ onGuest }) {
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState(initialAuthError)
 
+  useEffect(() => {
+    setGuestUi(false)
+  }, [])
+
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
+
+  function enterGuestMode() {
+    setGuestUi(true)
+    onGuest()
+  }
 
   async function resendVerification() {
     const email = form.email.trim()
@@ -175,8 +189,8 @@ export default function AuthPanel({ onGuest }) {
         </form>
 
         <div className="auth-divider"><span>oppure</span></div>
-        <button className="secondary-button full-width" type="button" onClick={onGuest}>Continua come ospite</button>
-        <p className="auth-footnote">In modalità ospite i dati restano salvati soltanto su questo dispositivo.</p>
+        <button className="secondary-button full-width" type="button" onClick={enterGuestMode}>Continua come ospite</button>
+        <p className="auth-footnote">In modalità ospite puoi consultare soltanto le previsioni meteo-marine. Per spot, diario, attrezzatura e statistiche è necessario accedere.</p>
       </section>
     </div>
   )
