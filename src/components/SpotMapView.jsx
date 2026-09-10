@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Fish, ImagePlus, LocateFixed, MapPin, Plus, Trash2, X } from 'lucide-react'
+import { Fish, ImagePlus, LocateFixed, MapPin, Plus, Search, Trash2, X } from 'lucide-react'
 import SpotPhoto from './SpotPhoto'
 import { compressSpotPhoto, deleteLocalSpotPhoto, formatPhotoBytes, saveLocalSpotPhoto } from '../lib/spotPhotos'
 import './SpotMapView.css'
@@ -66,9 +66,22 @@ export default function SpotMapView({
   const [photoPreview, setPhotoPreview] = useState('')
   const [photoStatus, setPhotoStatus] = useState('')
   const [compressingPhoto, setCompressingPhoto] = useState(false)
+  const [spotSearch, setSpotSearch] = useState('')
 
   const center = useMemo(() => [Number(location.latitude), Number(location.longitude)], [location.latitude, location.longitude])
   const geolocatedCatchCount = useMemo(() => catches.filter((item) => catchCoordinates(item, spots)).length, [catches, spots])
+  const filteredSpots = useMemo(() => {
+    const term = spotSearch.trim().toLowerCase()
+    if (!term) return spots
+
+    return spots.filter((spot) => [
+      spot.name,
+      spot.type,
+      spot.notes,
+      formatCoordinate(spot.latitude),
+      formatCoordinate(spot.longitude),
+    ].filter(Boolean).join(' ').toLowerCase().includes(term))
+  }, [spots, spotSearch])
 
   useEffect(() => () => {
     if (photoPreview) URL.revokeObjectURL(photoPreview)
@@ -313,12 +326,29 @@ export default function SpotMapView({
       </div>
 
       <section className="section-block spot-list-card">
-        <div className="section-title-row"><h2>I miei spot</h2><span className="muted-label">{spots.length}</span></div>
+        <div className="section-title-row">
+          <h2>I miei spot</h2>
+          <span className="muted-label">{spotSearch.trim() ? `${filteredSpots.length}/${spots.length}` : spots.length}</span>
+        </div>
+        {spots.length > 0 && (
+          <label className="spot-search">
+            <Search size={17} />
+            <input
+              type="search"
+              value={spotSearch}
+              onChange={(event) => setSpotSearch(event.target.value)}
+              placeholder="Cerca nome, tipo, note o coordinate…"
+              aria-label="Cerca tra i miei spot"
+            />
+          </label>
+        )}
         {spots.length === 0 ? (
           <div className="spot-empty">Nessuno spot salvato. Tocca la mappa per aggiungere il primo.</div>
+        ) : filteredSpots.length === 0 ? (
+          <div className="spot-empty">Nessuno spot corrisponde alla ricerca.</div>
         ) : (
           <div className="spot-list">
-            {spots.map((spot) => (
+            {filteredSpots.map((spot) => (
               <article key={spot.id} className="spot-row">
                 <div className="spot-row-icon"><MapPin size={18} /></div>
                 <div>
