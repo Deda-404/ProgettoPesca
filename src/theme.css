@@ -1,0 +1,257 @@
+html[data-xfish-theme='dark'] {
+  color-scheme: dark;
+}
+
+html[data-xfish-theme='light'] {
+  color-scheme: light;
+  background: #eaf5f8;
+  color: #12333d;
+}
+
+html[data-xfish-theme='light'] body {
+  background: radial-gradient(circle at top, #ffffff 0, #edf8fb 38%, #deeff4 100%);
+  color: #12333d;
+}
+
+.theme-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.theme-card strong,
+.theme-card span {
+  display: block;
+}
+
+.theme-card span {
+  margin-top: 4px;
+  color: #819a95;
+  font-size: .8rem;
+  line-height: 1.4;
+}
+
+.theme-toggle {
+  flex: 0 0 auto;
+  min-width: 138px;
+}
+
+html[data-xfish-theme='light'] .page-intro p,
+html[data-xfish-theme='light'] .location,
+html[data-xfish-theme='light'] .score-label,
+html[data-xfish-theme='light'] .muted-label,
+html[data-xfish-theme='light'] .forecast-disclaimer,
+html[data-xfish-theme='light'] .forecast-note,
+html[data-xfish-theme='light'] .forecast-source-note,
+html[data-xfish-theme='light'] .forecast-loading span,
+html[data-xfish-theme='light'] .detail-grid span,
+html[data-xfish-theme='light'] .astronomy-grid span,
+html[data-xfish-theme='light'] .solunar-grid span,
+html[data-xfish-theme='light'] .tide-list span,
+html[data-xfish-theme='light'] .detail-grid small,
+html[data-xfish-theme='light'] .tide-list small,
+html[data-xfish-theme='light'] .auth-copy,
+html[data-xfish-theme='light'] .auth-footnote,
+html[data-xfish-theme='light'] .connection-row > div > span,
+html[data-xfish-theme='light'] .theme-card span,
+html[data-xfish-theme='light'] .spot-row span,
+html[data-xfish-theme='light'] .spot-row small,
+html[data-xfish-theme='light'] .spot-empty,
+html[data-xfish-theme='light'] .map-catch-summary span,
+html[data-xfish-theme='light'] .gear-card small,
+html[data-xfish-theme='light'] .gear-no-results,
+html[data-xfish-theme='light'] .journal-search-panel > span {
+  color: #607b84;
+}
+
+html[data-xfish-theme='light'] .hero-card,
+html[data-xfish-theme='light'] .section-block,
+html[data-xfish-theme='light'] .catch-card,
+html[data-xfish-theme='light'] .gear-card,
+html[data-xfish-theme='light'] .auth-card {
+  background: rgba(255, 255, 255, .94);
+  border-color: rgba(27, 104, 126, .12);
+  box-shadow: 0 18px 45px rgba(22, 74, 88, .1);
+}
+
+html[data-xfish-theme='light'] .time-grid div,
+html[data-xfish-theme='light'] .conditions-grid article,
+html[data-xfish-theme='light'] .day-card,
+html[data-xfish-theme='light'] .detail-grid > div,
+html[data-xfish-theme='light'] .astronomy-grid > div,
+html[data-xfish-theme='light'] .solunar-grid > div,
+html[data-xfish-theme='light'] .tide-list > div,
+html[data-xfish-theme='light'] .spot-coordinate-box,
+html[data-xfish-theme='light'] .spot-photo-editor,
+html[data-xfish-theme='light'] .spot-row,
+html[data-xfish-theme='light'] .gear-specs,
+html[data-xfish-theme='light'] .gear-filters button,
+html[data-xfish-theme='light'] .auth-tabs,
+html[data-xfish-theme='light'] .location-chip {
+  background: #edf7f9;
+}
+
+html[data-xfish-theme='light'] .eyebrow,
+html[data-xfish-theme='light'] .gear-category,
+html[data-xfish-theme='light'] .daily-score.good {
+  color: #167c92;
+}
+
+html[data-xfish-theme='light'] .primary-button,
+html[data-xfish-theme='light'] .bottom-nav .add-button {
+  background: #087fa4;
+  color: #ffffff;
+}
+
+html[data-xfish-theme='light'] .secondary-button,
+html[data-xfish-theme='light'] .icon-button,
+html[data-xfish-theme='light'] .gear-card-actions button,
+html[data-xfish-theme='light'] .coastal-presets button {
+  background: #e2f2f5;
+  color: #1d5969;
+  border-color: rgba(18, 102, 126, .14);
+}
+
+html[data-xfish-theme='light'] .coastal-presets button.active,
+html[data-xfish-theme='light'] .gear-filters button.active,
+html[data-xfish-theme='light'] .auth-tabs button.active {
+  background: #d2edf2;
+  color: #0d657e;
+  border-color: rgba(8, 127, 164, .22);
+}
+
+html[data-xfish-theme='light'] .status-banner {
+  background: #e3f3f5;
+  color: #2d6775;
+  border-color: rgba(18, 102, 126, .13);
+}
+
+html[data-xfish-theme='light'] .connection-row {
+  border-bottom-color: rgba(19, 83, 100, .09);
+}
+
+html[data-xfish-theme='light'] .status-pill.ready,
+html[data-xfish-theme='light'] .live-pill {
+  background: rgba(18, 140, 126, .1);
+  color: #176e67;
+}
+
+html[data-xfish-theme='light'] .avatar {
+  background: #0f7894;
+  color: #ffffff;
+}
+
+html[data-xfish-theme='light'] .bottom-nav {
+  background: rgba(250, 254, 255, .96);
+  border-color: rgba(22, 91, 109, .1);
+  box-shadow: 0 14px 36px rgba(31, 87, 102, .16);
+}
+
+html[data-xfish-theme='light'] .bottom-nav button {
+  color: #68828a;
+}
+
+html[data-xfish-theme='light'] .bottom-nav button.active {
+  color: #087c9f;
+}
+
+html[data-xfish-theme='light'] .desktop-sidebar {
+  background: rgba(248, 253, 254, .92);
+  border-color: rgba(22, 91, 109, .1);
+}
+
+html[data-xfish-theme='light'] .desktop-nav button {
+  color: #56727b;
+}
+
+html[data-xfish-theme='light'] .desktop-nav button.active {
+  background: #dff1f4;
+  color: #0d6e89;
+}
+
+html[data-xfish-theme='light'] .catch-modal {
+  background: #f9fdfe;
+  border-color: rgba(23, 91, 109, .12);
+  box-shadow: 0 28px 70px rgba(30, 78, 91, .2);
+}
+
+html[data-xfish-theme='light'] .catch-form label,
+html[data-xfish-theme='light'] .gear-form label,
+html[data-xfish-theme='light'] .spot-form label,
+html[data-xfish-theme='light'] .auth-form label > span {
+  color: #496a73;
+}
+
+html[data-xfish-theme='light'] .catch-form input,
+html[data-xfish-theme='light'] .catch-form textarea,
+html[data-xfish-theme='light'] .gear-form input,
+html[data-xfish-theme='light'] .gear-form textarea,
+html[data-xfish-theme='light'] .gear-form select,
+html[data-xfish-theme='light'] .spot-form input,
+html[data-xfish-theme='light'] .spot-form textarea,
+html[data-xfish-theme='light'] .spot-form select,
+html[data-xfish-theme='light'] .auth-field,
+html[data-xfish-theme='light'] .journal-search,
+html[data-xfish-theme='light'] .spot-search,
+html[data-xfish-theme='light'] .gear-search,
+html[data-xfish-theme='light'] .spot-photo-picker,
+html[data-xfish-theme='light'] .spot-photo-preview {
+  background: #ffffff;
+  border-color: rgba(22, 102, 125, .16);
+  color: #184b59;
+}
+
+html[data-xfish-theme='light'] .catch-form input,
+html[data-xfish-theme='light'] .catch-form textarea,
+html[data-xfish-theme='light'] .gear-form input,
+html[data-xfish-theme='light'] .gear-form textarea,
+html[data-xfish-theme='light'] .gear-form select,
+html[data-xfish-theme='light'] .spot-form input,
+html[data-xfish-theme='light'] .spot-form textarea,
+html[data-xfish-theme='light'] .spot-form select,
+html[data-xfish-theme='light'] .auth-field input,
+html[data-xfish-theme='light'] .journal-search input,
+html[data-xfish-theme='light'] .spot-search input,
+html[data-xfish-theme='light'] .gear-search input {
+  color: #153c47;
+}
+
+html[data-xfish-theme='light'] .spot-map-toolbar {
+  background: #edf7f9;
+  border-bottom-color: rgba(22, 91, 109, .09);
+}
+
+html[data-xfish-theme='light'] .map-legend span {
+  background: #edf7f9;
+  color: #56727b;
+  border-color: rgba(22, 91, 109, .09);
+}
+
+html[data-xfish-theme='light'] .spot-row-icon,
+html[data-xfish-theme='light'] .catch-icon {
+  background: #dceff2;
+  color: #147d91;
+}
+
+html[data-xfish-theme='light'] .auth-divider::before,
+html[data-xfish-theme='light'] .auth-divider::after {
+  background: rgba(22, 91, 109, .12);
+}
+
+@media (min-width: 900px) {
+  html[data-xfish-theme='light'] body {
+    background: linear-gradient(145deg, #eef8fa, #ffffff 54%, #e4f2f5);
+  }
+}
+
+@media (max-width: 420px) {
+  .theme-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .theme-toggle {
+    width: 100%;
+  }
+}
