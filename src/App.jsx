@@ -25,7 +25,7 @@ import { createRemoteCatch, deleteRemoteCatch, loadRemoteCatches } from './lib/c
 import { createRemoteGear, deleteRemoteGear, loadRemoteGear, updateRemoteGear } from './lib/gear'
 import { deleteLocalCatchPhoto, saveLocalCatchPhoto } from './lib/photos'
 import { deleteLocalSpotPhoto, saveLocalSpotPhoto } from './lib/spotPhotos'
-import { createRemoteSpot, deleteRemoteSpot, loadRemoteSpots } from './lib/spots'
+import { createRemoteSpot, deleteRemoteSpot, loadRemoteSpots, updateRemoteSpot } from './lib/spots'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
 import './journalSearch.css'
@@ -461,29 +461,55 @@ function App() {
   async function saveSpot(spot) {
     setSavingSpot(true)
     setSpotStatus('')
+    const existing = spots.find((candidate) => candidate.id === spot.id) || null
+
     try {
       if (user) {
-        const saved = await createRemoteSpot(user.id, spot)
-        setSpots((current) => [saved, ...current])
-        setSpotStatus(spot.photoBlob ? 'Spot e foto salvati nel cloud.' : 'Spot salvato nel cloud.')
+        const remote = existing
+          ? await updateRemoteSpot(user.id, spot)
+          : await createRemoteSpot(user.id, spot)
+        const { photoCleanupPending = false, ...saved } = remote
+        setSpots((current) => existing
+          ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+          : [saved, ...current])
+        if (existing) {
+          setSpotStatus(photoCleanupPending
+            ? 'Spot aggiornato. La vecchia foto non più usata verrà ripulita in seguito.'
+            : spot.photoBlob || spot.removePhoto ? 'Spot e foto aggiornati nel cloud.' : 'Spot aggiornato nel cloud.')
+        } else {
+          setSpotStatus(spot.photoBlob ? 'Spot e foto salvati nel cloud.' : 'Spot salvato nel cloud.')
+        }
       } else {
-        const { photoBlob, ...localSpot } = spot
+        const { photoBlob, removePhoto, ...localSpot } = spot
         const id = spot.id || crypto.randomUUID()
-        let photoLocalKey = ''
+        let photoLocalKey = existing?.photoLocalKey || localSpot.photoLocalKey || ''
+
+        if (removePhoto && photoLocalKey) {
+          await deleteLocalSpotPhoto(photoLocalKey)
+          photoLocalKey = ''
+        }
         if (photoBlob) photoLocalKey = await saveLocalSpotPhoto(id, photoBlob)
+
+        const now = new Date().toISOString()
         const saved = {
+          ...(existing || {}),
           ...localSpot,
           id,
           photoLocalKey,
           photoPath: '',
           photoUrl: '',
-          createdAt: new Date().toISOString(),
+          createdAt: existing?.createdAt || now,
+          updatedAt: now,
           synced: false,
         }
-        const next = [saved, ...spots]
+        const next = existing
+          ? spots.map((candidate) => candidate.id === id ? saved : candidate)
+          : [saved, ...spots]
         setSpots(next)
         saveLocalState('xfish:spots', next)
-        setSpotStatus(photoLocalKey ? 'Spot e foto salvati su questo dispositivo.' : 'Spot salvato su questo dispositivo.')
+        setSpotStatus(existing
+          ? photoBlob || removePhoto ? 'Spot e foto aggiornati su questo dispositivo.' : 'Spot aggiornato su questo dispositivo.'
+          : photoLocalKey ? 'Spot e foto salvati su questo dispositivo.' : 'Spot salvato su questo dispositivo.')
       }
       return true
     } catch (error) {
