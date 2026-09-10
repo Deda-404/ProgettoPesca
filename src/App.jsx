@@ -8,6 +8,7 @@ import {
   MapPinned,
   NotebookTabs,
   Plus,
+  Search,
   Settings,
   Sun,
   Trash2,
@@ -26,6 +27,7 @@ import { deleteLocalSpotPhoto, saveLocalSpotPhoto } from './lib/spotPhotos'
 import { createRemoteSpot, deleteRemoteSpot, loadRemoteSpots } from './lib/spots'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import { loadLocalState, saveLocalState } from './lib/storage'
+import './journalSearch.css'
 
 const SpotMapView = lazy(() => import('./components/SpotMapView'))
 const GearInventoryView = lazy(() => import('./components/GearInventoryView'))
@@ -44,6 +46,7 @@ function gearName(item) {
 }
 
 function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCatch, onOpenStats, cloudEnabled, syncStatus }) {
+  const [search, setSearch] = useState('')
   const spotById = useMemo(() => new Map(spots.map((spot) => [spot.id, spot])), [spots])
   const gearById = useMemo(() => new Map(gear.map((item) => [item.id, item])), [gear])
 
@@ -59,6 +62,27 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCat
   function catchGear(item) {
     return (item.gearIds ?? []).map((id) => gearById.get(id)).filter(Boolean)
   }
+
+  const filteredCatches = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return catches
+
+    return catches.filter((item) => {
+      const linkedSpot = item.spotId ? spotById.get(item.spotId) : null
+      const linkedGear = (item.gearIds ?? []).map((id) => gearById.get(id)).filter(Boolean)
+      const date = item.caughtAt ? new Date(item.caughtAt).toLocaleDateString('it-IT') : ''
+      const text = [
+        item.species,
+        item.lure,
+        item.notes,
+        item.locationLabel,
+        linkedSpot?.name,
+        date,
+        ...linkedGear.map(gearName),
+      ].filter(Boolean).join(' ').toLowerCase()
+      return text.includes(term)
+    })
+  }, [catches, gearById, search, spotById])
 
   return (
     <>
@@ -76,15 +100,37 @@ function JournalView({ catches, spots, gear, onOpenCatch, onOpenMap, onDeleteCat
 
       {syncStatus && <div className="status-banner">{syncStatus}</div>}
 
+      {catches.length > 0 && (
+        <section className="journal-search-panel" aria-label="Ricerca diario catture">
+          <label className="journal-search">
+            <Search size={17} />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Cerca pesce, esca, spot, note o attrezzatura…"
+              aria-label="Cerca tra le mie catture"
+            />
+          </label>
+          <span>{search.trim() ? `${filteredCatches.length}/${catches.length} catture` : `${catches.length} catture`}</span>
+        </section>
+      )}
+
       {catches.length === 0 ? (
         <section className="section-block empty-state">
           <Fish size={34} />
           <h2>Nessuna cattura registrata</h2>
           <p>Usa il pulsante “Nuova cattura” per iniziare il tuo diario.</p>
         </section>
+      ) : filteredCatches.length === 0 ? (
+        <section className="section-block empty-state journal-no-results">
+          <Search size={34} />
+          <h2>Nessuna cattura trovata</h2>
+          <p>Modifica la ricerca per vedere di nuovo le catture del diario.</p>
+        </section>
       ) : (
         <section className="journal-list">
-          {catches.map((item) => {
+          {filteredCatches.map((item) => {
             const location = catchLocation(item)
             const linkedGear = catchGear(item)
             const visibleGear = linkedGear.slice(0, 3).map(gearName).filter(Boolean)
