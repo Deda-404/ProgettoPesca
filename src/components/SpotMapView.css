@@ -62,6 +62,9 @@
 .map-catch-summary strong, .map-catch-summary span { display: block; }
 .map-catch-summary span { margin-top: 4px; color: #7f9892; font-size: .78rem; line-height: 1.4; }
 
+html[data-xfish-theme='light'] .spot-editor-cancel { color: #376d79; }
+html[data-xfish-theme='light'] .spot-edit { background: #e2f2f5; color: #1d5969; }
+
 @media (min-width: 620px) {
   .spot-map-toolbar { flex-direction: row; align-items: center; justify-content: space-between; }
   .spot-row-actions { display: flex; }
